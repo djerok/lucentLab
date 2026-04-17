@@ -189,14 +189,27 @@ export default function Galvanic() {
             label="Anode · OXIDATION"
             color={cell.anodeColor}
             eq={`${aCoef === 1 ? '' : aCoef + ' '}${cell.anodeMetal}(s) → ${aCoef === 1 ? '' : aCoef + ' '}${cell.anodeIon} + ${n} e⁻`}
-            Eo={`E°ox = ${signed(cell.EoxAnode)} V`}
+            Eo={`E°red(${cell.anodeMetal}${'\u207F\u207A'}/${cell.anodeMetal}) = ${signed(-cell.EoxAnode)} V`}
           />
           <Half
             label="Cathode · REDUCTION"
             color={cell.cathodeColor}
             eq={`${cCoef === 1 ? '' : cCoef + ' '}${cell.cathodeIon} + ${n} e⁻ → ${cCoef === 1 ? '' : cCoef + ' '}${cell.cathodeMetal}(s)`}
-            Eo={`E°red = ${signed(cell.EredCathode)} V`}
+            Eo={`E°red(${cell.cathodeMetal}${'\u207F\u207A'}/${cell.cathodeMetal}) = ${signed(cell.EredCathode)} V`}
           />
+
+          <div style={{
+            background: 'var(--ink-2)', border: '1px solid var(--line)',
+            borderRadius: 4, padding: 10,
+            fontSize: 11, fontFamily: 'JetBrains Mono, monospace',
+            color: 'var(--paper-dim)', lineHeight: 1.6,
+          }}>
+            <div style={{ color: 'var(--phos)', letterSpacing: '0.12em', textTransform: 'uppercase', fontSize: 10 }}>AP form</div>
+            <div style={{ marginTop: 4, color: 'var(--paper)' }}>
+              E°cell = E°<sub>cathode</sub> − E°<sub>anode</sub>
+              {' = ('}{signed(cell.EredCathode)}{') − ('}{signed(-cell.EoxAnode)}{') = '}<b style={{ color: 'var(--phos)' }}>{signed(cell.EredCathode + cell.EoxAnode)} V</b>
+            </div>
+          </div>
 
           <div style={{
             borderTop: '1px solid var(--line)', paddingTop: 10,

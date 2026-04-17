@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import UISlider from '../components/ui/Slider';
 
 /**
  * Gibbs Free Energy — ΔG = ΔH − T·ΔS
@@ -465,17 +466,9 @@ function Slider({ label, value, min, max, step, unit, accent, onChange }: {
   unit: string; accent: string; onChange: (v: number) => void;
 }) {
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span className="eyebrow">{label}</span>
-        <span className="mono" style={{ fontSize: 11, color: accent }}>
-          {value >= 0 && value !== 0 ? '+' : ''}{value.toFixed(0)} {unit}
-        </span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-             onChange={(e) => onChange(Number(e.target.value))}
-             style={{ width: '100%', accentColor: accent }} />
-    </div>
+    <UISlider label={label} value={value} min={min} max={max} step={step}
+              onChange={onChange} accent={accent}
+              format={(v) => `${v > 0 ? '+' : ''}${v.toFixed(0)} ${unit}`} />
   );
 }
 

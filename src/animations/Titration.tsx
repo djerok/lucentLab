@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import SlideTabs from '../components/ui/SlideTabs';
+import AnimatedCounter from '../components/ui/AnimatedCounter';
 
 /**
  * Titration — interactive acid-base titration simulator.
@@ -96,32 +98,11 @@ export default function Titration() {
   return (
     <div style={{ display: 'grid', gap: 16 }}>
       {/* Acid selector */}
-      <div role="tablist" aria-label="Acid" style={{ display: 'flex', flexWrap: 'wrap' }}>
-        {ACIDS.map((a, i) => {
-          const active = a.key === acidKey;
-          return (
-            <button
-              key={a.key}
-              role="tab"
-              aria-selected={active}
-              onClick={() => { setAcidKey(a.key); setAuto(false); setVb(0); }}
-              className="mono"
-              style={{
-                padding: '10px 16px', fontSize: 11, letterSpacing: '0.14em',
-                textTransform: 'uppercase',
-                border: '1px solid var(--line-strong)',
-                borderLeft: i === 0 ? '1px solid var(--line-strong)' : 0,
-                background: active ? 'var(--paper)' : 'transparent',
-                color: active ? 'var(--ink-0)' : 'var(--paper-dim)',
-                fontWeight: active ? 600 : 400,
-                cursor: 'pointer',
-              }}
-            >
-              {a.name}
-            </button>
-          );
-        })}
-      </div>
+      <SlideTabs<AcidKey>
+        tabs={ACIDS.map(a => ({ id: a.key, label: a.name }))}
+        value={acidKey}
+        onChange={(k) => { setAcidKey(k); setAuto(false); setVb(0); }}
+      />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
         <div className="serif" style={{ fontSize: 24, fontStyle: 'italic' }}>
@@ -184,7 +165,7 @@ export default function Titration() {
             display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12,
             borderTop: '1px solid var(--line)', paddingTop: 12,
           }}>
-            <Stat label="pH"      value={fmtPH(pH)} accent={pHColor(pH)} big />
+            <Stat label="pH"      value={<AnimatedCounter value={pH} decimals={2} />} accent={pHColor(pH)} big />
             <Stat label="[H⁺]"    value={sci(Hp)}   accent="var(--acid)" />
             <Stat label="[OH⁻]"   value={sci(OH)}   accent="var(--base)" />
             <Stat label="V base"  value={`${Vb.toFixed(2)} mL`} />
@@ -530,7 +511,7 @@ function ControlBtn({
 
 function Stat({
   label, value, accent, big,
-}: { label: string; value: string; accent?: string; big?: boolean }) {
+}: { label: string; value: React.ReactNode; accent?: string; big?: boolean }) {
   return (
     <div>
       <div className="eyebrow" style={{ marginBottom: 4 }}>{label}</div>

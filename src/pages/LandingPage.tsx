@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { UNITS } from '../data/curriculum';
 import EndoExo from '../animations/EndoExo';
 import AnimationFrame from '../components/AnimationFrame';
+import SpotlightCard from '../components/ui/SpotlightCard';
 
 export default function LandingPage() {
   return (
@@ -94,24 +95,26 @@ export default function LandingPage() {
 
           <div className="units-grid" style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: 20 }}>
             {UNITS.map((u, i) => (
+              <SpotlightCard key={u.slug} spotlightColor={u.hue} className="fade-up unit-card" style={{
+                ['--hue' as string]: u.hue,
+                position: 'relative',
+                background: 'var(--ink-1)',
+                border: '1px solid var(--line)',
+                borderRadius: 6,
+                minHeight: 240,
+                transition: 'background 200ms ease, border-color 200ms ease, transform 200ms ease',
+                animationDelay: `${i * 60}ms`,
+              } as React.CSSProperties}>
               <Link
-                key={u.slug}
                 to={`/unit/${u.slug}`}
-                className="fade-up unit-card"
                 aria-label={`Unit ${u.number}: ${u.title}`}
                 style={{
-                  ['--hue' as string]: u.hue,
                   display: 'block',
-                  position: 'relative',
-                  background: 'var(--ink-1)',
-                  border: '1px solid var(--line)',
-                  borderRadius: 6,
                   padding: 28,
-                  minHeight: 240,
-                  transition: 'background 200ms ease, border-color 200ms ease, transform 200ms ease',
-                  animationDelay: `${i * 60}ms`,
-                  overflow: 'hidden',
-                } as React.CSSProperties}
+                  textDecoration: 'none',
+                  color: 'inherit',
+                  position: 'relative',
+                }}
               >
                 <div style={{
                   position: 'absolute', top: 0, right: 0, width: 200, height: 200,
@@ -160,6 +163,7 @@ export default function LandingPage() {
                   </span>
                 </div>
               </Link>
+              </SpotlightCard>
             ))}
           </div>
         </div>

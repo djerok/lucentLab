@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import UISlider from '../components/ui/Slider';
 
 /**
  * Ideal Gas Law — interactive piston simulator (PhET-style).
@@ -429,15 +430,8 @@ function Slider({ label, value, min, max, step, onChange, display, accent }: {
   onChange: (v: number) => void; display: string; accent: string;
 }) {
   return (
-    <label style={{ display: 'block' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span className="eyebrow">{label}</span>
-        <span className="mono" style={{ fontSize: 11, color: accent }}>{display}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step} value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={{ width: '100%', accentColor: accent }} />
-    </label>
+    <UISlider label={label} value={value} min={min} max={max} step={step}
+              onChange={onChange} accent={accent} format={() => display} />
   );
 }
 

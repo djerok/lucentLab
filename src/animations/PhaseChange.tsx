@@ -79,10 +79,12 @@ export default function PhaseChange() {
           <path ref={pathRef} d={curveD} fill="none" stroke="#5dd0ff" strokeWidth="2" />
 
           {/* Segment labels */}
-          <text x="60" y="178" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">solid</text>
-          <text x="125" y="156" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">↑ q = mLf (melt)</text>
-          <text x="195" y="120" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">liquid</text>
-          <text x="240" y="76" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">↑ q = mLv (vaporize)</text>
+          <text x="60" y="178" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">solid · q = mcΔT</text>
+          <text x="125" y="146" fontFamily="JetBrains Mono" fontSize="8" fill="#ffc878">PLATEAU 1: ice → water</text>
+          <text x="125" y="156" fontFamily="JetBrains Mono" fontSize="8" fill="#ffc878">ΔH(fus) = 334 J/g, T fixed</text>
+          <text x="195" y="120" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">liquid · q = mcΔT</text>
+          <text x="232" y="62" fontFamily="JetBrains Mono" fontSize="8" fill="#ffc878">PLATEAU 2: water → steam</text>
+          <text x="232" y="72" fontFamily="JetBrains Mono" fontSize="8" fill="#ffc878">ΔH(vap) = 2260 J/g, T fixed</text>
           <text x="320" y="35" fontFamily="JetBrains Mono" fontSize="8" fill="#5dd0ff">gas</text>
 
           {/* Moving point — rides the path via getPointAtLength so it stays ON the curve */}

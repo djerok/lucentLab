@@ -1,4 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import UISlider from '../components/ui/Slider';
+import SlideTabs from '../components/ui/SlideTabs';
 
 /**
  * Calorimetry — PhET-grade interactive (4 modes: coffee-cup, bomb, mixing, phase).
@@ -165,14 +167,16 @@ export default function Calorimetry() {
 
   return (
     <div ref={rootRef} style={{ display: 'grid', gap: 16 }}>
-      <div role="tablist" style={{ display: 'flex', flexWrap: 'wrap' }}>
-        {(['cup','bomb','mix','phase'] as Mode[]).map((m, i) => (
-          <button key={m} role="tab" aria-selected={mode===m} onClick={() => setMode(m)} className="mono"
-            style={{ padding: '10px 16px', fontSize: 11, letterSpacing: '0.14em', textTransform: 'uppercase', border: '1px solid var(--line-strong)', borderLeftWidth: i === 0 ? 1 : 0, background: mode === m ? 'var(--paper)' : 'transparent', color: mode === m ? 'var(--ink-0)' : 'var(--paper-dim)', fontWeight: mode === m ? 600 : 400, cursor: 'pointer' }}>
-            {m === 'cup' ? 'Coffee-cup' : m === 'bomb' ? 'Bomb' : m === 'mix' ? 'Mixing waters' : 'Phase change'}
-          </button>
-        ))}
-      </div>
+      <SlideTabs<Mode>
+        tabs={[
+          { id: 'cup',   label: 'Coffee-cup' },
+          { id: 'bomb',  label: 'Bomb' },
+          { id: 'mix',   label: 'Mixing waters' },
+          { id: 'phase', label: 'Phase change' },
+        ]}
+        value={mode}
+        onChange={setMode}
+      />
 
       <div style={{ border: '1px solid var(--line)', borderLeft: '3px solid var(--phos)', background: 'var(--ink-1)', padding: '10px 14px', borderRadius: 4 }}>
         <div className="eyebrow">Conservation of energy</div>
@@ -752,13 +756,9 @@ function Panel({ children }: { children: React.ReactNode }) {
 }
 function Slider({ label, value, min, max, step, onChange, accent }: { label: string; value: number; min: number; max: number; step?: number; onChange: (n: number) => void; accent: string }) {
   return (
-    <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span className="eyebrow">{label}</span>
-        <span className="mono" style={{ fontSize: 11, color: accent }}>{Number.isInteger(value) ? value : value.toFixed(2)}</span>
-      </div>
-      <input type="range" min={min} max={max} step={step ?? 1} value={value} onChange={e => onChange(Number(e.target.value))} style={{ width: '100%', accentColor: accent }} />
-    </div>
+    <UISlider label={label} value={value} min={min} max={max} step={step ?? 1}
+              onChange={onChange} accent={accent}
+              format={(v) => Number.isInteger(v) ? `${v}` : v.toFixed(2)} />
   );
 }
 function Stat({ label, value, accent, big }: { label: string; value: string; accent?: string; big?: boolean }) {
