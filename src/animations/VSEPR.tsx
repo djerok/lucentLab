@@ -23,6 +23,12 @@ type Mol = {
   dipole?: Vec3; anglePairs?: AnglePair[]; notes: string;
 };
 
+// ───────── Element radii (visual, relative — larger = chemically bigger) ─────────
+const ATOM_R: Record<string, number> = {
+  H: 14, C: 20, N: 20, O: 21, F: 19,
+  B: 22, Be: 22, P: 25, S: 25, Cl: 27, Br: 30, Xe: 36,
+};
+
 // ───────── Element palette ─────────
 const ELEM: Record<string, { color: string; ring: string; text: string }> = {
   H:  { color: '#f0e6d2', ring: '#d8cdb4', text: '#0a0908' },
@@ -276,6 +282,7 @@ export default function VSEPR() {
   const [showLones, setShowLones] = useState(true);
   const [autoRot, setAutoRot] = useState(true);
   const [showDipole, setShowDipole] = useState(true);
+  const [balloonMode, setBalloonMode] = useState(false);
 
   const m = MOLS[shapeKey];
 
@@ -440,6 +447,7 @@ export default function VSEPR() {
             showAngles={showAngles}
             showLones={showLones}
             showDipole={showDipole}
+            balloonMode={balloonMode}
             onPointerDown={onPointerDown}
             onPointerMove={onPointerMove}
             onPointerUp={onPointerUp}
@@ -454,6 +462,7 @@ export default function VSEPR() {
             <Toggle on={showLones} onChange={setShowLones}>Lone pairs</Toggle>
             <Toggle on={autoRot} onChange={setAutoRot}>Auto-rotate</Toggle>
             <Toggle on={showDipole} onChange={setShowDipole}>Dipole</Toggle>
+            <Toggle on={balloonMode} onChange={setBalloonMode}>Balloon model</Toggle>
           </div>
         </div>
 
@@ -517,11 +526,11 @@ export default function VSEPR() {
 
 // ───────── SVG scene ─────────
 function Scene({
-  mol, yaw, pitch, showAngles, showLones, showDipole,
+  mol, yaw, pitch, showAngles, showLones, showDipole, balloonMode,
   onPointerDown, onPointerMove, onPointerUp,
 }: {
   mol: Mol; yaw: number; pitch: number;
-  showAngles: boolean; showLones: boolean; showDipole: boolean;
+  showAngles: boolean; showLones: boolean; showDipole: boolean; balloonMode: boolean;
   onPointerDown: (e: React.PointerEvent<SVGSVGElement>) => void;
   onPointerMove: (e: React.PointerEvent<SVGSVGElement>) => void;
   onPointerUp: () => void;
@@ -539,8 +548,8 @@ function Scene({
 
   const items: Item[] = [];
 
-  // Central atom
-  const centralR = 26;
+  // Central atom — use element-specific radius
+  const centralR = ATOM_R[mol.central.sym] ?? 26;
   items.push({ kind: 'atom', depth: 0, sym: mol.central.sym, px: cx, py: cy, r: centralR, central: true });
 
   // Bonds + bonded atoms
@@ -556,7 +565,7 @@ function Scene({
       depth: r3[2] / 2,
       ax: cx, ay: cy, bx: p.x, by: p.y, az: 0, bz: r3[2],
     });
-    const atomR = (atom.sym === 'H' ? 16 : 22) * p.s;
+    const atomR = (ATOM_R[atom.sym] ?? 20) * p.s;
     items.push({
       kind: 'atom', depth: r3[2], sym: atom.sym,
       px: p.x, py: p.y, r: atomR, central: false,
@@ -568,11 +577,12 @@ function Scene({
     mol.lones.forEach((l) => {
       const r3 = rotate(l.pos, yaw, pitch);
       const p = project(r3, cx, cy, SCALE);
-      items.push({ kind: 'lone', depth: r3[2], px: p.x, py: p.y, r: 22 * p.s });
+      // Lone pair balloon size slightly smaller than average bonded atom
+      items.push({ kind: 'lone', depth: r3[2], px: p.x, py: p.y, r: 16 * p.s });
     });
   }
 
-  // Angle labels (between bond pairs)
+  // Angle labels (between bond pairs) — placed at 85 % of bond distance so they clear the central atom
   if (showAngles) {
     const pairs: AnglePair[] = mol.anglePairs ?? (mol.atoms.length >= 2
       ? [{ i: 0, j: 1, label: mol.ang }]
@@ -581,14 +591,14 @@ function Scene({
       const a = projectedAtoms[pair.i];
       const b = projectedAtoms[pair.j];
       if (!a || !b) return;
-      // Place label at midpoint of arc (average direction × small radius)
       const mid: Vec3 = [
         (a.r3[0] + b.r3[0]) / 2,
         (a.r3[1] + b.r3[1]) / 2,
         (a.r3[2] + b.r3[2]) / 2,
       ];
       const len = Math.hypot(mid[0], mid[1], mid[2]) || 1;
-      const k = 1.05 / len;
+      // Push label to 85 % of bond length so it clears the central atom glyph
+      const k = (R * 0.85) / len;
       const labelP = project([mid[0] * k, mid[1] * k, mid[2] * k], cx, cy, SCALE);
       items.push({ kind: 'angle', depth: 999, px: labelP.x, py: labelP.y, label: pair.label });
     });
@@ -661,6 +671,24 @@ function Scene({
         }
         if (it.kind === 'atom') {
           const e = ELEM[it.sym] ?? { color: '#888', ring: '#444', text: '#000' };
+          if (balloonMode) {
+            // Balloon model: large translucent domain sphere, no atom label
+            const br = (it.central ? 46 : 52) * (it.r / (it.central ? centralR : (ATOM_R[it.sym] ?? 20)));
+            return (
+              <g key={idx}>
+                <circle cx={it.px} cy={it.py} r={br}
+                        fill={e.color} fillOpacity={it.central ? 0.55 : 0.45}
+                        stroke={e.ring} strokeWidth="1" strokeOpacity="0.6" />
+                {it.central && (
+                  <text x={it.px} y={it.py + 5} textAnchor="middle"
+                        fontFamily="Fraunces, serif" fontWeight="700"
+                        fontSize={14} fill={e.text} fillOpacity={0.9}>
+                    {it.sym}
+                  </text>
+                )}
+              </g>
+            );
+          }
           return (
             <g key={idx}>
               <circle cx={it.px} cy={it.py} r={it.r + 1.5} fill="rgba(0,0,0,0.5)" />
@@ -677,9 +705,21 @@ function Scene({
           );
         }
         if (it.kind === 'lone') {
+          if (balloonMode) {
+            // Balloon model: lone pair domain is slightly larger balloon, distinct purple
+            return (
+              <g key={idx}>
+                <circle cx={it.px} cy={it.py} r={58 * (it.r / (16))}
+                        fill="#a78bfa" fillOpacity={0.35}
+                        stroke="#7c5fd6" strokeWidth="1" strokeOpacity="0.5" />
+                <circle cx={it.px - it.r * 0.3} cy={it.py} r={it.r * 0.18} fill="#e0d2ff" opacity={0.7} />
+                <circle cx={it.px + it.r * 0.3} cy={it.py} r={it.r * 0.18} fill="#e0d2ff" opacity={0.7} />
+              </g>
+            );
+          }
           return (
             <g key={idx}>
-              <circle cx={it.px} cy={it.py} r={it.r * 1.6} fill="url(#g-lone)" />
+              <circle cx={it.px} cy={it.py} r={it.r * 1.35} fill="url(#g-lone)" />
               <circle cx={it.px - it.r * 0.32} cy={it.py} r={it.r * 0.18} fill="#e0d2ff" />
               <circle cx={it.px + it.r * 0.32} cy={it.py} r={it.r * 0.18} fill="#e0d2ff" />
             </g>

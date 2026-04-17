@@ -157,7 +157,7 @@ export default function Stoichiometry() {
             </div>
           </div>
 
-          <ParticleScene rxn={rxn} live={live} />
+          <ParticleScene rxn={rxn} live={live} maxCounts={safeCounts} finalAmounts={finalAmounts} />
 
           {progress >= 1 && (
             <div className="mono" style={{
@@ -276,45 +276,59 @@ function liveAmounts(rxn: Reaction, counts: Record<string, number>, maxExtent: n
 
 // ───── particle scene ─────
 
-function ParticleScene({ rxn, live }: { rxn: Reaction; live: ReturnType<typeof liveAmounts> }) {
-  // Each molecule gets a stable seeded position across the whole flask area
-  // so they look suspended in the volume rather than stacked in a corner.
-  const items: { key: string; el: React.ReactNode; opacity: number }[] = [];
-  rxn.reactants.forEach(r => {
-    const n = live.reactants[r.id];
-    const whole = Math.floor(n);
-    const frac = n - whole;
-    for (let i = 0; i < whole; i++) items.push({ key: `${r.id}-${i}`, el: r.render(28), opacity: 1 });
-    if (frac > 0.05) items.push({ key: `${r.id}-frac`, el: r.render(28), opacity: frac });
-  });
-  rxn.products.forEach(p => {
-    const n = live.products[p.id];
-    const whole = Math.floor(n);
-    const frac = n - whole;
-    for (let i = 0; i < whole; i++) items.push({ key: `${p.id}-${i}`, el: p.render(28), opacity: 1 });
-    if (frac > 0.05) items.push({ key: `${p.id}-frac`, el: p.render(28), opacity: frac });
-  });
-
-  // Cheap deterministic hash → 0..1, so molecules don't reshuffle every frame.
+// Stable slots: pre-allocate max possible molecules and fade via opacity.
+// This prevents jarring pop-in/out when counts cross integer boundaries.
+function ParticleScene({
+  rxn, live, maxCounts, finalAmounts,
+}: {
+  rxn: Reaction;
+  live: ReturnType<typeof liveAmounts>;
+  maxCounts: Record<string, number>;
+  finalAmounts: Record<string, number>;
+}) {
+  // Cheap deterministic hash → 0..1, so positions stay stable across renders.
   const hash = (s: string) => {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
     return ((h >>> 0) % 10000) / 10000;
   };
 
+  const slots: { key: string; el: React.ReactNode; opacity: number }[] = [];
+
+  rxn.reactants.forEach(r => {
+    const maxN = Math.ceil(maxCounts[r.id] ?? 0);
+    const current = live.reactants[r.id];
+    for (let i = 0; i < maxN; i++) {
+      // Slot i is fully visible when i+1 ≤ current, fading when i < current < i+1, invisible when i ≥ current
+      const opacity = Math.max(0, Math.min(1, current - i));
+      slots.push({ key: `${r.id}-${i}`, el: r.render(28), opacity });
+    }
+  });
+
+  rxn.products.forEach(p => {
+    const maxN = Math.ceil(finalAmounts[p.id] ?? 0);
+    const current = live.products[p.id];
+    for (let i = 0; i < maxN; i++) {
+      const opacity = Math.max(0, Math.min(1, current - i));
+      slots.push({ key: `${p.id}-${i}`, el: p.render(28), opacity });
+    }
+  });
+
   return (
     <div style={{ position: 'absolute', inset: '46px 18px 30px' }}>
-      {items.map(({ key, el, opacity }) => {
-        const px = hash(key + 'x') * 92 + 2;        // 2..94 % horizontal
-        const py = hash(key + 'y') * 86 + 4;        // 4..90 % vertical
+      {slots.map(({ key, el, opacity }) => {
+        const px = hash(key + 'x') * 88 + 4;   // 4..92 % horizontal
+        const py = hash(key + 'y') * 82 + 6;   // 6..88 % vertical
         const delay = hash(key + 'd') * 3;
         return (
           <div key={key} style={{
             position: 'absolute', left: `${px}%`, top: `${py}%`,
             transform: 'translate(-50%, -50%)',
             opacity,
-            animation: 'st-drift 3.4s ease-in-out infinite alternate',
+            transition: 'opacity 350ms ease-in-out',
+            animation: opacity > 0.05 ? 'st-drift 3.4s ease-in-out infinite alternate' : 'none',
             animationDelay: `${delay}s`,
+            pointerEvents: 'none',
           }}>
             {el}
           </div>

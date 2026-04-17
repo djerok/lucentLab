@@ -365,14 +365,18 @@ function Scene({ meta, r, theta, flicker, onRotate }: {
 function Connector({ meta, flicker, r }: { meta: IMFMeta; flicker: number; r: number }) {
   const opacity = 0.35 + 0.55 * flicker;
   if (meta.id === 'hbond') {
+    // r is the O···O distance (σ = 2.8 Å); H···O ≈ r − 0.96 Å (O-H bond length)
+    const hToO = Math.max(0, r - 0.96);
     return (
-      <svg width={70} height={40} style={{ overflow: 'visible' }}>
-        <line x1={0} y1={20} x2={70} y2={20} stroke={meta.color} strokeWidth={2}
+      <svg width={70} height={48} style={{ overflow: 'visible' }}>
+        <line x1={0} y1={22} x2={70} y2={22} stroke={meta.color} strokeWidth={2}
           strokeDasharray="4 4" opacity={opacity} />
         <text x={35} y={12} textAnchor="middle" fontFamily="JetBrains Mono"
           fontSize={9} fill={meta.color} letterSpacing="0.14em">H-BOND</text>
         <text x={35} y={34} textAnchor="middle" fontFamily="JetBrains Mono"
-          fontSize={8} fill="rgba(245,241,232,0.55)">{r.toFixed(2)} Å</text>
+          fontSize={8} fill="rgba(245,241,232,0.7)">O···O {r.toFixed(2)} Å</text>
+        <text x={35} y={44} textAnchor="middle" fontFamily="JetBrains Mono"
+          fontSize={7} fill="rgba(245,241,232,0.4)">H···O ≈ {hToO.toFixed(2)} Å</text>
       </svg>
     );
   }
@@ -464,37 +468,46 @@ function HCl() {
 }
 
 function Water({ orient, lonePair }: { orient: 'oxygenLeft' | 'hRight'; lonePair?: boolean }) {
-  // Two layouts: oxygenLeft (O on left, two Hs on right) or hRight (H on right, O on left)
+  // Both layouts: O on left, H atoms angled to the right at ±52.25° (= 104.5° / 2).
+  // O center ≈ (22, 37) in a 78×76 container. Bond length in screen ≈ 27 px.
+  // H1 at (22 + 27·cos52°, 37 − 27·sin52°) = (38, 16)  → div left:27 top:5
+  // H2 at (22 + 27·cos52°, 37 + 27·sin52°) = (38, 58)  → div left:27 top:47
   if (orient === 'hRight') {
     return (
-      <div style={{ position: 'relative', width: 90, height: 70 }}>
+      <div style={{ position: 'relative', width: 78, height: 76 }}>
         <div style={{
-          position: 'absolute', inset: 0, borderRadius: 35,
-          background: 'radial-gradient(circle at 25% 50%, rgba(255,91,60,0.25) 0%, transparent 55%)',
+          position: 'absolute', inset: 0, borderRadius: 38,
+          background: 'radial-gradient(circle at 28% 50%, rgba(255,91,60,0.22) 0%, transparent 55%)',
         }} />
-        <div style={{ position: 'absolute', left: 6, top: 18 }}><Atom symbol="O" color={ATOM.O} size={36} glow /></div>
-        <div style={{ position: 'absolute', left: 50, top: 4 }}><Atom symbol="H" color={ATOM.H} size={22} /></div>
-        <div style={{ position: 'absolute', left: 50, top: 40 }}><Atom symbol="H" color={ATOM.H} size={22} /></div>
-        <ChargeTag sign="δ−" color="#5dd0ff" dx={4}  dy={2} />
-        <ChargeTag sign="δ+" color="#ff6b35" dx={68} dy={-8} />
+        {/* O at left */}
+        <div style={{ position: 'absolute', left: 4, top: 20 }}><Atom symbol="O" color={ATOM.O} size={34} glow /></div>
+        {/* H1 upper-right at ~52° above horizontal */}
+        <div style={{ position: 'absolute', left: 27, top: 5 }}><Atom symbol="H" color={ATOM.H} size={21} /></div>
+        {/* H2 lower-right at ~52° below horizontal */}
+        <div style={{ position: 'absolute', left: 27, top: 49 }}><Atom symbol="H" color={ATOM.H} size={21} /></div>
+        <ChargeTag sign="δ−" color="#5dd0ff" dx={-4} dy={4} />
+        <ChargeTag sign="δ+" color="#ff6b35" dx={52} dy={-10} />
       </div>
     );
   }
+  // oxygenLeft (acceptor): same geometry — O on left, H pointing right, lone pair lobes on left of O
   return (
-    <div style={{ position: 'relative', width: 90, height: 70 }}>
+    <div style={{ position: 'relative', width: 78, height: 76 }}>
       <div style={{
-        position: 'absolute', inset: 0, borderRadius: 35,
-        background: 'radial-gradient(circle at 25% 50%, rgba(93,208,255,0.30) 0%, transparent 55%)',
+        position: 'absolute', inset: 0, borderRadius: 38,
+        background: 'radial-gradient(circle at 28% 50%, rgba(93,208,255,0.28) 0%, transparent 55%)',
       }} />
-      <div style={{ position: 'absolute', left: 6, top: 18 }}><Atom symbol="O" color={ATOM.O} size={36} glow /></div>
-      <div style={{ position: 'absolute', left: 50, top: 2 }}><Atom symbol="H" color={ATOM.H} size={22} /></div>
-      <div style={{ position: 'absolute', left: 50, top: 42 }}><Atom symbol="H" color={ATOM.H} size={22} /></div>
-      <ChargeTag sign="δ−" color="#5dd0ff" dx={2}  dy={4} />
-      <ChargeTag sign="δ+" color="#ff6b35" dx={66} dy={-6} />
+      <div style={{ position: 'absolute', left: 4, top: 20 }}><Atom symbol="O" color={ATOM.O} size={34} glow /></div>
+      <div style={{ position: 'absolute', left: 27, top: 5 }}><Atom symbol="H" color={ATOM.H} size={21} /></div>
+      <div style={{ position: 'absolute', left: 27, top: 49 }}><Atom symbol="H" color={ATOM.H} size={21} /></div>
+      <ChargeTag sign="δ−" color="#5dd0ff" dx={-4} dy={4} />
+      <ChargeTag sign="δ+" color="#ff6b35" dx={52} dy={-10} />
       {lonePair && (
+        // Lone pair lobes on the left side of O (facing the donor)
         <span className="mono" style={{
-          position: 'absolute', left: -2, top: 30, fontSize: 16, color: '#5dd0ff', letterSpacing: 1,
-        }}>: :</span>
+          position: 'absolute', left: -8, top: 28, fontSize: 14, color: '#5dd0ff',
+          letterSpacing: 2, lineHeight: 1,
+        }}>··</span>
       )}
     </div>
   );
