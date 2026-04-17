@@ -607,21 +607,14 @@ function Slider({ label, value, min, max, step, onChange, accent, display }: {
 function LogSlider({ label, value, onChange, accent, unit }: {
   label: string; value: number; onChange: (v: number) => void; accent: string; unit: string;
 }) {
-  // Map log10([0.001..10]) = [-3..1] to slider integer 0..400
-  const sliderVal = Math.round(((Math.log10(value) + 3) / 4) * 400);
+  // Slider value is log10(concentration), range -3..1 (i.e. 0.001 M .. 10 M).
+  const logV = Math.log10(value);
   return (
     <div>
-      <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 4 }}>
-        <span className="eyebrow">{label}</span>
-        <span className="mono" style={{ fontSize: 11, color: accent }}>{fmtConc(value)} {unit}</span>
-      </div>
-      <input type="range" min={0} max={400} step={1} value={sliderVal}
-             onChange={(e) => {
-               const f = Number(e.target.value) / 400;
-               const c = Math.pow(10, -3 + f * 4);
-               onChange(c);
-             }}
-             style={{ width: '100%', accentColor: accent }} />
+      <UISlider label={label} value={logV} min={-3} max={1} step={0.01}
+                onChange={(v) => onChange(Math.pow(10, v))}
+                accent={accent}
+                format={() => `${fmtConc(value)} ${unit}`} />
       <div className="mono" style={{ fontSize: 9, color: 'var(--paper-dim)', display: 'flex', justifyContent: 'space-between', marginTop: 2 }}>
         <span>0.001</span><span>0.1</span><span>1</span><span>10</span>
       </div>

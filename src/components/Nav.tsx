@@ -1,6 +1,7 @@
 import { Link, useLocation } from 'react-router-dom';
 import { useEffect, useRef, useState } from 'react';
 import { UNITS } from '../data/curriculum';
+import { useTheme } from '../theme';
 
 export default function Nav() {
   const loc = useLocation();
@@ -12,7 +13,8 @@ export default function Nav() {
   return (
     <header style={{
       position: 'sticky', top: 0, zIndex: 50,
-      background: 'rgba(10,9,8,0.96)',
+      background: 'var(--nav-bg)',
+      backdropFilter: 'blur(6px)',
       borderBottom: '1px solid var(--line)',
     }}>
       <div className="shell" style={{
@@ -57,6 +59,8 @@ export default function Nav() {
           </Link>
 
           <UnitsDropdown active={activeUnit?.slug ?? null} />
+
+          <ThemeToggle />
 
           <span className="tag hide@md" aria-hidden="true">
             <span className="dot" style={{ background: 'var(--phos)' }} />v1.1
@@ -152,6 +156,33 @@ function UnitsDropdown({ active }: { active: string | null }) {
         </div>
       )}
     </div>
+  );
+}
+
+function ThemeToggle() {
+  const { theme, toggle } = useTheme();
+  const isDark = theme === 'dark';
+  return (
+    <button
+      type="button"
+      onClick={toggle}
+      aria-label={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+      title={`Switch to ${isDark ? 'light' : 'dark'} mode`}
+      className="mono"
+      style={{
+        display: 'inline-flex', alignItems: 'center', gap: 8,
+        padding: '6px 10px',
+        fontSize: 11, letterSpacing: '0.16em', textTransform: 'uppercase',
+        color: 'var(--paper-dim)',
+        border: '1px solid var(--line-strong)',
+        borderRadius: 999,
+        background: 'transparent',
+        cursor: 'pointer',
+      }}
+    >
+      <span aria-hidden style={{ fontSize: 13, lineHeight: 1 }}>{isDark ? '☾' : '☀'}</span>
+      <span style={{ color: 'var(--paper)' }}>{isDark ? 'Dark' : 'Light'}</span>
+    </button>
   );
 }
 

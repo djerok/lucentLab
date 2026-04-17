@@ -21,6 +21,20 @@ Run from `npm run dev`. Each row is a single check; tick ✅ / ❌ and note the 
 | 1.3 | Reload mid-animation | State resets, no NaN values |
 | 1.4 | Tab key through controls | Focus ring visible, order logical |
 | 1.5 | Within a unit, topics that share an animation show "↑ See ..." pointer (no double render) | Verified on Unit 06 (6.3 → 6.4) and any unit reusing a key |
+| 1.6 | Toggle theme (dark ↔ light) on a unit page | All tab pills / sliders / buttons remain readable — no dark-on-dark text |
+| 1.7 | Toggle mode (Interact ↔ Study) on every unit 1–9 | Study view loads with header, lead, interact, animation, body, MCQs; no console errors |
+
+## 1a · Study mode
+
+| # | Step | Expected |
+|---|------|----------|
+| 1a.1 | Load any unit in Study mode | Topic header reads `UNIT NN · TOPIC X.Y` + serif title |
+| 1a.2 | Scan every KaTeX render | Zero `.katex-error` elements; `$Z_{\text{eff}}$`-style symbols render in math font |
+| 1a.3 | Inspect each topic's primary SVG | No text overlaps, no labels outside viewBox, labels don't collide with the top-left title tag |
+| 1a.4 | Answer an MCQ (correct) | Green border + ✓ CORRECT + teaching explanation |
+| 1a.5 | Answer an MCQ (wrong) | Red border, correct choice highlighted green, explanation unfurls; "Try again" resets that question |
+| 1a.6 | Answer every question in the unit test | Score panel turns accent color and shows EXCELLENT / PASSING / REVIEW NEEDED badge |
+| 1a.7 | Retry a unit-test question | Tally updates; unanswered count does not double |
 
 ## 2 · Animations (Unit 1–9)
 

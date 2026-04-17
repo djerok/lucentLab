@@ -152,6 +152,16 @@ function unpairedElectrons(filled: FilledShell[]): number {
 }
 
 // Group shells by principal quantum number for the Bohr diagram.
+// Inner radius (nucleus clearance) and outer cap inside the -110..110 viewBox.
+// Shells are evenly spaced so even Z=118's 7 shells fit cleanly.
+// rMax leaves headroom for the e⁻ glyph (r≈2.4) AND the label that sits at y=-(r+3)
+// with fontSize 5.5 — at r=95 the label tops out at y≈-103, safely inside the -110 viewBox.
+function shellR(i: number, total: number): number {
+  const rMin = 22, rMax = 95;
+  if (total <= 1) return rMin;
+  return rMin + (i * (rMax - rMin)) / (total - 1);
+}
+
 function shellPopulations(filled: FilledShell[]): number[] {
   const pop: number[] = [];
   for (const s of filled) {
@@ -379,7 +389,8 @@ function BohrDiagram({ filled, z, accent }: { filled: FilledShell[]; z: number; 
       <div className="mono" style={{ position: 'absolute', top: 14, right: 16, fontSize: 10, color: 'var(--paper-faint)' }}>
         shells: {pops.map(p => p).join('·')}
       </div>
-      <svg viewBox="-110 -110 220 220" style={{ width: '100%', height: '100%' }}>
+      <svg viewBox="-110 -110 220 220" preserveAspectRatio="xMidYMid meet"
+           style={{ width: '100%', height: '100%', overflow: 'hidden' }}>
         <defs>
           <radialGradient id="orb-nuc" cx="0.4" cy="0.4">
             <stop offset="0%" stopColor="#fff8d2" />
@@ -393,9 +404,9 @@ function BohrDiagram({ filled, z, accent }: { filled: FilledShell[]; z: number; 
           </radialGradient>
         </defs>
 
-        {/* Shell rings */}
+        {/* Shell rings — radii scale to viewBox (max 100) so Z=118's 7 shells stay inside. */}
         {pops.map((_, i) => {
-          const r = 22 + i * 16;
+          const r = shellR(i, pops.length);
           return (
             <circle key={i} cx="0" cy="0" r={r}
               fill="none" stroke="rgba(245,241,232,0.15)" strokeWidth="0.5"
@@ -412,7 +423,7 @@ function BohrDiagram({ filled, z, accent }: { filled: FilledShell[]; z: number; 
         {/* Electrons orbiting */}
         {pops.map((p, i) => {
           if (p === 0) return null;
-          const r = 22 + i * 16;
+          const r = shellR(i, pops.length);
           const dur = 6 + i * 2.5;
           return (
             <g key={i}>
@@ -429,9 +440,10 @@ function BohrDiagram({ filled, z, accent }: { filled: FilledShell[]; z: number; 
                   </circle>
                 );
               })}
-              {/* Shell label */}
-              <text x={r + 4} y="-3" fontSize="6" fontFamily="JetBrains Mono" fill="rgba(245,241,232,0.5)">
-                n={i + 1}·{p}e⁻
+              {/* Shell label — sits just above its own ring so labels stack vertically and never collide */}
+              <text x="0" y={-r - 3} textAnchor="middle"
+                    fontSize="5.5" fontFamily="JetBrains Mono" fill="rgba(245,241,232,0.55)">
+                n={i + 1} · {p}e⁻
               </text>
             </g>
           );

@@ -160,8 +160,9 @@ function Box({ phase, temp }: { phase: Phase; temp: number }) {
 
     const draw = () => {
       const w = c.width, h = c.height;
-      ctx.fillStyle = 'rgba(16,14,12,0.4)';
-      ctx.fillRect(0, 0, w, h);
+      // Fully clear each frame. A translucent fill leaves visible streaks
+      // behind fast particles (and also doesn't adapt to light theme).
+      ctx.clearRect(0, 0, w, h);
 
       const ps = particlesRef.current;
       for (const p of ps) {

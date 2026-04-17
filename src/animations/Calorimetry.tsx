@@ -358,8 +358,21 @@ function CupSVG({ material, mm, mw, TmNow, TwNow, progress }: {
       <path d="M 40 80 L 50 240 L 150 240 L 160 80 Z" fill="url(#cup-grad)" stroke="var(--line-strong)" />
       <path d="M 40 80 L 30 240 L 50 240 L 40 80 Z" fill="rgba(245,241,232,0.06)" />
       <path d="M 160 80 L 170 240 L 150 240 L 160 80 Z" fill="rgba(245,241,232,0.06)" />
-      <path d={`M 42 ${surfaceY} L 53 240 L 147 240 L 158 ${surfaceY} Z`} fill={waterColor} opacity="0.6" />
-      <line x1={42} y1={surfaceY} x2={158} y2={surfaceY} stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
+      {(() => {
+        // Cup interior: top corners (40,80)-(160,80), bottom (50,240)-(150,240).
+        // Water sides MUST share the cup's interior slope, otherwise it floats inside the wall.
+        const t = (surfaceY - 80) / (240 - 80);
+        const xL = 40 + t * (50 - 40);
+        const xR = 160 - t * (160 - 150);
+        return (
+          <>
+            <path d={`M ${xL} ${surfaceY} L 50 240 L 150 240 L ${xR} ${surfaceY} Z`}
+                  fill={waterColor} opacity="0.6" />
+            <line x1={xL} y1={surfaceY} x2={xR} y2={surfaceY}
+                  stroke="rgba(255,255,255,0.4)" strokeWidth="0.8" />
+          </>
+        );
+      })()}
       {TwNow > 60 && (
         <g opacity={clamp((TwNow - 60) / 40, 0, 0.6)}>
           <path d="M 80 60 Q 90 40 100 60 T 120 60" stroke="rgba(245,241,232,0.5)" strokeWidth="2" fill="none" />

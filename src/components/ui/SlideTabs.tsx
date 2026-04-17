@@ -81,7 +81,7 @@ export default function SlideTabs<T extends string>({
               padding: `${padY}px ${padX}px`,
               background: 'transparent', border: 'none',
               fontSize, letterSpacing: '0.14em', textTransform: 'uppercase',
-              color: active ? '#0a0908' : 'var(--paper-dim)',
+              color: active ? 'var(--ink-0)' : 'var(--paper-dim)',
               fontWeight: active ? 600 : 400,
               cursor: 'pointer',
               transition: 'color 180ms',

@@ -2,13 +2,35 @@ import { Link, useParams } from 'react-router-dom';
 import { UNITS } from '../data/curriculum';
 import { ANIMATIONS } from '../animations/registry';
 import AnimationFrame from '../components/AnimationFrame';
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
+import { getStudyGuide } from '../data/study';
+import { TopicStudyBlock, TopicStudyLead, TopicStudyInteract, TopicStudyBody, UnitTest } from '../components/study/StudyGuide';
+import SlideTabs from '../components/ui/SlideTabs';
+
+type Mode = 'interact' | 'study';
+const MODE_KEY = 'lucent.studyMode';
+
+function loadInitialMode(): Mode {
+  // always start in interactions-only on every page load; study mode is opt-in
+  return 'interact';
+}
 
 export default function UnitPage() {
   const { slug } = useParams<{ slug: string }>();
   const unit = UNITS.find((u) => u.slug === slug);
+  const studyGuide = slug ? getStudyGuide(slug) : undefined;
+  const [mode, setMode] = useState<Mode>(loadInitialMode);
+
+  useEffect(() => {
+    if (typeof localStorage !== 'undefined') localStorage.setItem(MODE_KEY, mode);
+  }, [mode]);
 
   useEffect(() => { window.scrollTo(0, 0); }, [slug]);
+
+  // Look up the study material for a given topic id (returns undefined if none)
+  const studyFor = (topicId: string) =>
+    studyGuide?.topics.find(t => t.topicId === topicId);
+  const showStudy = mode === 'study' && !!studyGuide;
 
   if (!unit) {
     return (
@@ -56,6 +78,29 @@ export default function UnitPage() {
               <p style={{ marginTop: 20, fontSize: 19, color: 'var(--paper-dim)', maxWidth: 540, lineHeight: 1.55 }}>
                 {unit.subtitle}
               </p>
+
+              {/* Study-mode toggle. Only shown when a guide exists for this unit. */}
+              {studyGuide && (
+                <div style={{ marginTop: 26 }}>
+                  <div className="eyebrow" style={{ marginBottom: 8 }}>View mode</div>
+                  <SlideTabs
+                    tabs={[
+                      { id: 'interact', label: 'Interactions only' },
+                      { id: 'study',    label: '+ Study guide',     accent: unit.hue },
+                    ]}
+                    value={mode}
+                    onChange={setMode}
+                  />
+                  <div className="mono" style={{
+                    fontSize: 11, color: 'var(--paper-faint)', marginTop: 8,
+                    letterSpacing: '0.04em',
+                  }}>
+                    {showStudy
+                      ? 'Study mode · notes, MCQ checks, and a final unit test below.'
+                      : 'Interactive simulations only.'}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* Topics index */}
@@ -102,6 +147,7 @@ export default function UnitPage() {
             // for the first topic and show a "see above" pointer for the rest.
             const firstSeenTopicId = new Map<string, string>();
             return unit.topics.map((topic) => {
+              const study = showStudy ? studyFor(topic.id) : undefined;
               if (!topic.animationKey) return (
                 <article key={topic.id} id={`topic-${topic.id}`} style={{ borderTop: '1px solid var(--line)', paddingTop: 40, marginTop: 40 }}>
                   <div className="eyebrow" style={{ marginBottom: 8 }}>TOPIC {topic.id}</div>
@@ -111,6 +157,7 @@ export default function UnitPage() {
                   <p style={{ marginTop: 12, color: 'var(--paper-dim)', maxWidth: 720, fontSize: 16, lineHeight: 1.6 }}>
                     {topic.blurb}
                   </p>
+                  {study && <TopicStudyBlock topic={study} accent={unit.hue} topicTitle={topic.title} />}
                 </article>
               );
 
@@ -137,6 +184,7 @@ export default function UnitPage() {
                     }}>
                       ↑ See {anim.title} (Topic {seenIn})
                     </a>
+                    {study && <TopicStudyBlock topic={study} accent={unit.hue} topicTitle={topic.title} />}
                   </article>
                 );
               }
@@ -144,7 +192,23 @@ export default function UnitPage() {
 
               const C = anim.Component;
               return (
-                <article key={topic.id} id={`topic-${topic.id}`}>
+                <article
+                  key={topic.id}
+                  id={`topic-${topic.id}`}
+                  style={showStudy ? { borderTop: `2px solid ${unit.hue}`, paddingTop: 36, marginTop: 48 } : undefined}
+                >
+                  {showStudy && (
+                    <header style={{ marginBottom: 18 }}>
+                      <div className="eyebrow" style={{ color: unit.hue, marginBottom: 8 }}>
+                        UNIT {unit.number} · TOPIC {topic.id}
+                      </div>
+                      <h3 className="serif" style={{ fontSize: 34, fontWeight: 400, letterSpacing: '-0.015em' }}>
+                        {topic.title}
+                      </h3>
+                    </header>
+                  )}
+                  {study && <TopicStudyLead topic={study} accent={unit.hue} topicTitle={topic.title} />}
+                  {study?.interact && <TopicStudyInteract guide={study.interact} accent={unit.hue} />}
                   <AnimationFrame
                     title={anim.title}
                     unitTag={`UNIT ${unit.number} · TOPIC ${topic.id}`}
@@ -155,12 +219,18 @@ export default function UnitPage() {
                   >
                     <C />
                   </AnimationFrame>
+                  {study && <TopicStudyBody topic={study} accent={unit.hue} />}
                 </article>
               );
             });
           })()}
         </div>
       </section>
+
+      {/* Final unit test — only in study mode */}
+      {showStudy && studyGuide && (
+        <UnitTest questions={studyGuide.unitTest} accent={unit.hue} unitTitle={unit.title} />
+      )}
 
       {/* PREV / NEXT */}
       <section style={{ borderTop: '1px solid var(--line)', padding: '40px 0' }}>

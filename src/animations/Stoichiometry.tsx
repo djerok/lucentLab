@@ -277,35 +277,50 @@ function liveAmounts(rxn: Reaction, counts: Record<string, number>, maxExtent: n
 // ───── particle scene ─────
 
 function ParticleScene({ rxn, live }: { rxn: Reaction; live: ReturnType<typeof liveAmounts> }) {
-  // Render reactant + product molecules as a flowing grid that drifts gently.
-  // Quantities round to nearest whole; use opacity for fractional fade.
-  const items: { key: string; el: React.ReactNode }[] = [];
+  // Each molecule gets a stable seeded position across the whole flask area
+  // so they look suspended in the volume rather than stacked in a corner.
+  const items: { key: string; el: React.ReactNode; opacity: number }[] = [];
   rxn.reactants.forEach(r => {
     const n = live.reactants[r.id];
     const whole = Math.floor(n);
     const frac = n - whole;
-    for (let i = 0; i < whole; i++) items.push({ key: `${r.id}-${i}`, el: r.render(28) });
-    if (frac > 0.05) items.push({ key: `${r.id}-frac`, el: <span style={{ opacity: frac }}>{r.render(28)}</span> });
+    for (let i = 0; i < whole; i++) items.push({ key: `${r.id}-${i}`, el: r.render(28), opacity: 1 });
+    if (frac > 0.05) items.push({ key: `${r.id}-frac`, el: r.render(28), opacity: frac });
   });
   rxn.products.forEach(p => {
     const n = live.products[p.id];
     const whole = Math.floor(n);
     const frac = n - whole;
-    for (let i = 0; i < whole; i++) items.push({ key: `${p.id}-${i}`, el: p.render(28) });
-    if (frac > 0.05) items.push({ key: `${p.id}-frac`, el: <span style={{ opacity: frac }}>{p.render(28)}</span> });
+    for (let i = 0; i < whole; i++) items.push({ key: `${p.id}-${i}`, el: p.render(28), opacity: 1 });
+    if (frac > 0.05) items.push({ key: `${p.id}-frac`, el: p.render(28), opacity: frac });
   });
 
+  // Cheap deterministic hash → 0..1, so molecules don't reshuffle every frame.
+  const hash = (s: string) => {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return ((h >>> 0) % 10000) / 10000;
+  };
+
   return (
-    <div style={{
-      position: 'absolute', inset: '46px 18px 30px',
-      display: 'flex', flexWrap: 'wrap', gap: 10, alignContent: 'flex-start',
-    }}>
-      {items.map(({ key, el }) => (
-        <div key={key} style={{ display: 'inline-flex', animation: 'st-drift 3s ease-in-out infinite alternate', animationDelay: `${(key.charCodeAt(0) % 10) * 0.1}s` }}>
-          {el}
-        </div>
-      ))}
-      <style>{`@keyframes st-drift { from { transform: translateY(0) } to { transform: translateY(4px) } }`}</style>
+    <div style={{ position: 'absolute', inset: '46px 18px 30px' }}>
+      {items.map(({ key, el, opacity }) => {
+        const px = hash(key + 'x') * 92 + 2;        // 2..94 % horizontal
+        const py = hash(key + 'y') * 86 + 4;        // 4..90 % vertical
+        const delay = hash(key + 'd') * 3;
+        return (
+          <div key={key} style={{
+            position: 'absolute', left: `${px}%`, top: `${py}%`,
+            transform: 'translate(-50%, -50%)',
+            opacity,
+            animation: 'st-drift 3.4s ease-in-out infinite alternate',
+            animationDelay: `${delay}s`,
+          }}>
+            {el}
+          </div>
+        );
+      })}
+      <style>{`@keyframes st-drift { from { transform: translate(-50%, -52%) } to { transform: translate(-50%, -48%) } }`}</style>
     </div>
   );
 }

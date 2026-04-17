@@ -17,7 +17,9 @@ import SlideTabs from '../components/ui/SlideTabs';
 
 type Mode = 'exo' | 'endo';
 
-type Atom = { sym: string; r: number; color: string };
+type Atom = { sym: string; r: number; color: string; charge?: string };
+type BondSpec = { a: number; b: number; order?: 1 | 2 | 3 };
+type P = { x: number; y: number };
 type Reaction = {
   id: string;
   mode: Mode;
@@ -29,8 +31,14 @@ type Reaction = {
   // Bond-energy ledger
   broken: { name: string; E: number }[];   // kJ/mol, positive (energy IN)
   formed: { name: string; E: number }[];   // kJ/mol, positive magnitude (energy OUT)
-  // Atoms used by the schematic scene (4 atoms re-paired)
-  atoms: [Atom, Atom, Atom, Atom];
+  // Atoms + five-frame position track (variable length per reaction)
+  atoms: Atom[];
+  frames: P[][];          // 5 frames, each same length as atoms
+  oldBonds: BondSpec[];   // bonds present at start (fade out through transition)
+  newBonds: BondSpec[];   // bonds formed by products (fade in after transition)
+  persistBonds?: BondSpec[]; // bonds visible the entire time (e.g. internal ion bonds)
+  // Optional note appended below the scene to clarify scale / stoichiometry
+  note?: string;
   // Display labels for reactants / products in the scene
   rLabel: string;
   pLabel: string;
@@ -50,6 +58,9 @@ const C = {
 };
 
 const REACTIONS: Reaction[] = [
+  // ============================================================
+  // Methane combustion: CH4 + 2 O2 -> CO2 + 2 H2O (9 atoms)
+  // ============================================================
   {
     id: 'methane',
     mode: 'exo',
@@ -64,38 +75,93 @@ const REACTIONS: Reaction[] = [
       { name: '2 × C=O', E: 2 * 799 },
       { name: '4 × O–H', E: 4 * 463 },
     ],
+    // atoms: [C, H1..H4 (from CH4), O5,O6 (first O2 → CO2), O7,O8 (second O2 → waters)]
     atoms: [
-      { sym: 'C',  r: 22, color: C.C },
-      { sym: 'H',  r: 14, color: C.H },
-      { sym: 'O',  r: 20, color: C.O },
-      { sym: 'O',  r: 20, color: C.O },
+      { sym: 'C', r: 20, color: C.C },
+      { sym: 'H', r: 12, color: C.H },
+      { sym: 'H', r: 12, color: C.H },
+      { sym: 'H', r: 12, color: C.H },
+      { sym: 'H', r: 12, color: C.H },
+      { sym: 'O', r: 17, color: C.O },
+      { sym: 'O', r: 17, color: C.O },
+      { sym: 'O', r: 17, color: C.O },
+      { sym: 'O', r: 17, color: C.O },
     ],
-    rLabel: 'CH₄ · O₂',
-    pLabel: 'CO₂ · H₂O',
+    // Trajectories (smooth, roughly monotonic):
+    //   C0 drifts rightward to become CO2's carbon.
+    //   O2's break: O6/O7 converge on C to form O=C=O; O5 & O8 coast over to the
+    //   left to cap the two water molecules (forming ∧ over the top H's and ∨
+    //   under the bottom H's). The H's stay in their quadrants and only flex a
+    //   bit vertically to bracket their new O partners.
+    frames: [
+      // Frame 0 — CH4 on left, two O2 on right (top & bottom)
+      [{x:100,y:150},{x:70,y:115},{x:135,y:115},{x:70,y:185},{x:135,y:185},{x:445,y:85},{x:500,y:85},{x:445,y:215},{x:500,y:215}],
+      // Frame 1 — approaching / aligning
+      [{x:175,y:150},{x:135,y:118},{x:200,y:118},{x:135,y:182},{x:200,y:182},{x:345,y:95},{x:400,y:115},{x:345,y:205},{x:400,y:185}],
+      // Frame 2 — transition state: compact cluster, O2 bonds loosening
+      [{x:230,y:150},{x:170,y:112},{x:225,y:112},{x:170,y:188},{x:225,y:188},{x:245,y:95},{x:275,y:140},{x:275,y:160},{x:245,y:205}],
+      // Frame 3 — products forming: CO2 center, O's arching out to the waters
+      [{x:275,y:150},{x:130,y:110},{x:190,y:110},{x:130,y:190},{x:190,y:190},{x:170,y:88},{x:235,y:150},{x:325,y:150},{x:170,y:212}],
+      // Frame 4 — products settled: linear O=C=O, two bent H2O on the left
+      [{x:280,y:150},{x:118,y:108},{x:182,y:108},{x:118,y:192},{x:182,y:192},{x:150,y:82},{x:235,y:150},{x:325,y:150},{x:150,y:218}],
+    ],
+    oldBonds: [
+      {a:0,b:1},{a:0,b:2},{a:0,b:3},{a:0,b:4},   // CH4
+      {a:5,b:6,order:2},{a:7,b:8,order:2},        // two O=O
+    ],
+    newBonds: [
+      {a:0,b:6,order:2},{a:0,b:7,order:2},        // O=C=O
+      {a:5,b:1},{a:5,b:2},                        // water 1 (O5 + H1,H2)
+      {a:8,b:3},{a:8,b:4},                        // water 2 (O8 + H3,H4)
+    ],
+    rLabel: 'CH₄ · 2 O₂',
+    pLabel: 'CO₂ · 2 H₂O',
   },
+
+  // ============================================================
+  // H2 + Cl2 -> 2 HCl (4 atoms) — atoms literally re-pair
+  // ============================================================
   {
-    id: 'neutral',
+    id: 'h2cl2',
     mode: 'exo',
-    label: 'HCl + NaOH neutralization',
-    equation: <>HCl(aq) + NaOH(aq) → NaCl(aq) + H<sub>2</sub>O(l)</>,
-    deltaH: -56, Ea: 25, reactE: 0,
+    label: 'H₂ + Cl₂ → 2 HCl',
+    equation: <>H<sub>2</sub>(g) + Cl<sub>2</sub>(g) → 2 HCl(g)</>,
+    deltaH: -184, Ea: 25, reactE: 0,
     broken: [
-      { name: 'H–Cl(aq) sep.', E: 431 },
-      { name: 'Na–OH(aq) sep.', E: 380 },
+      { name: '1 × H–H', E: 436 },
+      { name: '1 × Cl–Cl', E: 242 },
     ],
     formed: [
-      { name: 'H–OH (l)', E: 463 + 463 },
-      { name: 'Na⁺Cl⁻ (aq)', E: 411 },
+      { name: '2 × H–Cl', E: 2 * 431 },
     ],
     atoms: [
       { sym: 'H',  r: 14, color: C.H },
+      { sym: 'H',  r: 14, color: C.H },
       { sym: 'Cl', r: 22, color: C.Cl },
-      { sym: 'Na', r: 22, color: C.Na },
-      { sym: 'O',  r: 20, color: C.O },
+      { sym: 'Cl', r: 22, color: C.Cl },
     ],
-    rLabel: 'HCl · NaOH',
-    pLabel: 'NaCl · H₂O',
+    frames: [
+      // Frame 0 — H2 left, Cl2 right
+      [{x:130,y:150},{x:180,y:150},{x:440,y:150},{x:500,y:150}],
+      // Frame 1 — approaching
+      [{x:190,y:150},{x:245,y:150},{x:380,y:150},{x:440,y:150}],
+      // Frame 2 — transition: linear arrangement
+      [{x:220,y:150},{x:310,y:150},{x:265,y:150},{x:355,y:150}],
+      // Frame 3 — products forming: two HCl molecules separating
+      [{x:170,y:150},{x:420,y:150},{x:225,y:150},{x:475,y:150}],
+      // Frame 4 — settled
+      [{x:150,y:150},{x:410,y:150},{x:205,y:150},{x:465,y:150}],
+    ],
+    oldBonds: [{a:0,b:1},{a:2,b:3}],
+    newBonds: [{a:0,b:2},{a:1,b:3}],
+    rLabel: 'H₂ · Cl₂',
+    pLabel: '2 HCl',
   },
+
+  // ============================================================
+  // Photosynthesis — shown as the 1:1 balanced fragment
+  //   CO2 + H2O -> CH2O + O2  (×6 gives the full equation)
+  // ============================================================
   {
     id: 'photo',
     mode: 'endo',
@@ -107,18 +173,54 @@ const REACTIONS: Reaction[] = [
       { name: '12 × O–H', E: 12 * 463 },
     ],
     formed: [
-      { name: 'glucose bonds', E: 12 * 413 + 5 * 358 + 5 * 463 },
+      // glucose (open-chain): 5 C–C, 7 C–H, 5 C–O, 5 O–H, 1 C=O (aldehyde)
+      { name: 'glucose bonds', E: 5 * 358 + 7 * 413 + 5 * 358 + 5 * 463 + 1 * 745 },
       { name: '6 × O=O', E: 6 * 498 },
     ],
+    // atoms: [C0, O1, O2 (from CO2); H3, H4, O5 (from H2O)]
+    // In the product, C0 keeps its bond to O1 (this becomes formaldehyde's C=O);
+    // O2 leaves and pairs with O5 (the water's oxygen) to form O2 gas;
+    // H3 and H4 migrate onto C0 to complete H2C=O.
     atoms: [
-      { sym: 'C',  r: 22, color: C.C },
-      { sym: 'O',  r: 20, color: C.O },
-      { sym: 'H',  r: 14, color: C.H },
-      { sym: 'O',  r: 20, color: C.O },
+      { sym: 'C', r: 20, color: C.C },
+      { sym: 'O', r: 18, color: C.O },
+      { sym: 'O', r: 18, color: C.O },
+      { sym: 'H', r: 12, color: C.H },
+      { sym: 'H', r: 12, color: C.H },
+      { sym: 'O', r: 18, color: C.O },
     ],
+    // Stacked reactant layout (CO2 on top, H2O on bottom — both on the left)
+    // keeps trajectories mostly monotonic and avoids atoms crossing each other.
+    frames: [
+      // Frame 0 — CO2 top-left (linear), H2O bottom-left (bent)
+      [{x:130,y:85},{x:70,y:85},{x:190,y:85},{x:90,y:235},{x:175,y:235},{x:130,y:220}],
+      // Frame 1 — drifting toward center
+      [{x:135,y:120},{x:85,y:110},{x:195,y:115},{x:105,y:205},{x:185,y:200},{x:215,y:210}],
+      // Frame 2 — transition: loose cluster mid-left, O2-going-out drifts right
+      [{x:145,y:145},{x:110,y:115},{x:240,y:140},{x:115,y:180},{x:175,y:180},{x:330,y:160}],
+      // Frame 3 — products forming: CH2O on the left, O2 emerging on the right
+      [{x:140,y:155},{x:140,y:95},{x:420,y:148},{x:108,y:190},{x:172,y:190},{x:480,y:152}],
+      // Frame 4 — settled
+      [{x:140,y:155},{x:140,y:90},{x:425,y:150},{x:105,y:192},{x:175,y:192},{x:485,y:150}],
+    ],
+    oldBonds: [
+      {a:0,b:1,order:2},{a:0,b:2,order:2},  // O=C=O (CO2)
+      {a:5,b:3},{a:5,b:4},                   // H-O-H (water)
+    ],
+    newBonds: [
+      {a:0,b:1,order:2},                      // formaldehyde's C=O (keeps C–O1 bond)
+      {a:0,b:3},{a:0,b:4},                    // two new C-H bonds (H3, H4 migrate to C)
+      {a:2,b:5,order:2},                      // O=O (O2 from CO2's other oxygen + water's oxygen)
+    ],
+    note: 'Shown at 1:1 balanced stoichiometry (CO₂ + H₂O → CH₂O + O₂). Six of these sum to the full equation: 6 × CH₂O gives the C₆H₁₂O₆ atom count of glucose.',
     rLabel: 'CO₂ · H₂O',
-    pLabel: 'C₆H₁₂O₆ · O₂',
+    pLabel: 'CH₂O · O₂',
   },
+
+  // ============================================================
+  // NH4NO3(s) -> NH4+(aq) + NO3-(aq) — ionic dissociation
+  //   no covalent bonds break; the lattice ion pair just separates
+  // ============================================================
   {
     id: 'nh4no3',
     mode: 'endo',
@@ -132,11 +234,39 @@ const REACTIONS: Reaction[] = [
       { name: 'hydration NH₄⁺', E: 305 },
       { name: 'hydration NO₃⁻', E: 320 },
     ],
+    // atoms: [N0, H1..H4 (NH4+); N5, O6, O7, O8 (NO3-)]
     atoms: [
-      { sym: 'N',  r: 20, color: C.N },
-      { sym: 'H',  r: 14, color: C.H },
-      { sym: 'N',  r: 20, color: C.N },
-      { sym: 'O',  r: 20, color: C.O },
+      { sym: 'N', r: 16, color: C.N, charge: '+' },
+      { sym: 'H', r: 10, color: C.H },
+      { sym: 'H', r: 10, color: C.H },
+      { sym: 'H', r: 10, color: C.H },
+      { sym: 'H', r: 10, color: C.H },
+      { sym: 'N', r: 16, color: C.N },
+      { sym: 'O', r: 15, color: C.O },
+      { sym: 'O', r: 15, color: C.O },
+      { sym: 'O', r: 15, color: C.O, charge: '−' },
+    ],
+    // Spaced so persistent N–H and N–O bonds are clearly visible
+    // (edge-to-edge gap ≥ ~15px on every bond).
+    frames: [
+      // Frame 0 — lattice pair (ions close)
+      [{x:230,y:150},{x:195,y:115},{x:265,y:115},{x:195,y:185},{x:265,y:185},{x:345,y:150},{x:345,y:100},{x:302,y:178},{x:388,y:178}],
+      // Frame 1
+      [{x:210,y:150},{x:175,y:115},{x:245,y:115},{x:175,y:185},{x:245,y:185},{x:365,y:150},{x:365,y:100},{x:322,y:178},{x:408,y:178}],
+      // Frame 2 (drifting apart)
+      [{x:180,y:150},{x:145,y:115},{x:215,y:115},{x:145,y:185},{x:215,y:185},{x:395,y:150},{x:395,y:100},{x:352,y:178},{x:438,y:178}],
+      // Frame 3
+      [{x:150,y:150},{x:115,y:115},{x:185,y:115},{x:115,y:185},{x:185,y:185},{x:430,y:150},{x:430,y:100},{x:387,y:178},{x:473,y:178}],
+      // Frame 4 — fully separated
+      [{x:130,y:150},{x:95,y:115},{x:165,y:115},{x:95,y:185},{x:165,y:185},{x:460,y:150},{x:460,y:100},{x:417,y:178},{x:503,y:178}],
+    ],
+    // lattice contact: a dashed N⋯N line shows the two ions held together at
+    // the start; it fades (via distOp) as the ions drift apart.
+    oldBonds: [{a:0,b:5}],
+    newBonds: [],
+    persistBonds: [
+      {a:0,b:1},{a:0,b:2},{a:0,b:3},{a:0,b:4},  // N–H within NH4+
+      {a:5,b:6},{a:5,b:7},{a:5,b:8},             // N–O within NO3-
     ],
     rLabel: 'NH₄NO₃(s)',
     pLabel: 'NH₄⁺ · NO₃⁻ (aq)',
@@ -208,8 +338,9 @@ export default function EndoExo() {
   const energyOut  = totalFormed * formProg;
   const netSoFar   = energyIn - energyOut;
 
-  // Surroundings temperature change is a smoothed function of t past the peak
-  const release = clamp((t - 0.5) / 0.5, 0, 1); // 0 at peak → 1 at end
+  // Surroundings temperature change ramps in from the start of the barrier and
+  // saturates by the end, so the thermometer visibly moves throughout.
+  const release = ease(clamp((t - 0.15) / 0.75, 0, 1));
   const tempDelta = release * (mode === 'exo' ? +1 : -1);
 
   // Phase string (for the marble label)
@@ -297,6 +428,14 @@ export default function EndoExo() {
             <span style={{ opacity: 0.5 }}>→</span>
             <span>{rxn.pLabel}</span>
           </div>
+          {rxn.note && (
+            <div style={{
+              marginTop: 8, fontSize: 11, lineHeight: 1.5,
+              color: 'var(--paper-faint)', fontStyle: 'italic',
+            }}>
+              {rxn.note}
+            </div>
+          )}
         </Panel>
 
         {/* RIGHT — energy diagram */}
@@ -315,6 +454,22 @@ export default function EndoExo() {
         <Panel>
           <div className="eyebrow">Surroundings</div>
           <Thermometer mode={mode} delta={tempDelta} />
+          {(() => {
+            const mag = Math.abs(tempDelta);
+            const status =
+              mag < 0.05 ? 'STABLE' :
+              mode === 'exo' ? '↑ WARMING' : '↓ COOLING';
+            const col = mag < 0.05 ? 'var(--paper-faint)' : (mode === 'exo' ? C.hot : C.cool);
+            return (
+              <div className="mono" style={{
+                fontSize: 11, color: col, marginTop: 8, textAlign: 'center',
+                letterSpacing: '0.16em', opacity: mag < 0.05 ? 0.6 : 0.4 + 0.6 * mag,
+                transition: 'opacity 200ms, color 200ms',
+              }}>
+                {status}
+              </div>
+            );
+          })()}
           <div className="mono" style={{ fontSize: 11, color: mode === 'exo' ? C.hot : C.cool, marginTop: 6, textAlign: 'center' }}>
             {mode === 'exo' ? 'q_surr > 0 (heated)' : 'q_surr < 0 (cooled)'}
           </div>
@@ -372,38 +527,53 @@ function MolecularScene({ rxn, t }: { rxn: Reaction; t: number }) {
   const atoms = rxn.atoms;
   const VBW = 600, VBH = 300;
 
-  // Reference frames at canonical t values, interpolated piecewise.
-  // 0.0 — far apart (reactants)        0.25 — meeting
-  // 0.5 — transition state (cross)      0.75 — products forming
-  // 1.0 — products separated
-  const F0: P[] = [{ x:  90, y: 150 }, { x: 150, y: 150 }, { x: 460, y: 150 }, { x: 520, y: 150 }];
-  const F1: P[] = [{ x: 230, y: 150 }, { x: 280, y: 150 }, { x: 340, y: 150 }, { x: 390, y: 150 }];
-  const F2: P[] = [{ x: 250, y:  90 }, { x: 250, y: 210 }, { x: 360, y:  90 }, { x: 360, y: 210 }];
-  const F3: P[] = [{ x: 270, y:  90 }, { x: 270, y: 210 }, { x: 330, y:  90 }, { x: 330, y: 210 }];
-  const F4: P[] = [{ x: 110, y:  70 }, { x: 480, y: 230 }, { x: 170, y:  70 }, { x: 540, y: 230 }];
+  // Catmull-Rom spline through the 5 keyframes — C¹-continuous so atoms don't
+  // change direction abruptly at segment boundaries. A gentle global ease on t
+  // smooths the start and end of the whole trajectory.
+  const frames = rxn.frames;
+  const N = frames.length;           // 5
+  const te = ease(clamp(t, 0, 1));
+  const u = te * (N - 1);
+  let i = Math.floor(u);
+  if (i >= N - 1) i = N - 2;
+  const local = u - i;
+  const getFrame = (j: number) => frames[clamp(j, 0, N - 1)];
+  const pos = (idx: number): P => {
+    const p0 = getFrame(i - 1)[idx];
+    const p1 = getFrame(i)[idx];
+    const p2 = getFrame(i + 1)[idx];
+    const p3 = getFrame(i + 2)[idx];
+    return {
+      x: catmullRom(p0.x, p1.x, p2.x, p3.x, local),
+      y: catmullRom(p0.y, p1.y, p2.y, p3.y, local),
+    };
+  };
 
-  const stops = [0, 0.25, 0.5, 0.75, 1];
-  const frames = [F0, F1, F2, F3, F4];
-  let i = 0;
-  while (i < stops.length - 2 && t > stops[i + 1]) i++;
-  const local = (t - stops[i]) / (stops[i + 1] - stops[i]);
-  const k = ease(clamp(local, 0, 1));
-  const pos = (idx: number): P => ({
-    x: lerp(frames[i][idx].x, frames[i + 1][idx].x, k),
-    y: lerp(frames[i][idx].y, frames[i + 1][idx].y, k),
-  });
+  // Bond opacity is driven primarily by inter-atomic distance relative to the
+  // bond's reference (equilibrium) length — bonds stretch thin and fade as
+  // atoms separate, and new bonds pinch into existence as atoms converge.
+  // A soft time gate on top prevents either kind from appearing off-phase.
+  const distOp = (ax: number, ay: number, bx: number, by: number, refLen: number) => {
+    const d = Math.hypot(bx - ax, by - ay);
+    // full opacity at or below ref; linear fade to 0 over the next ~80% stretch
+    return clamp(1 - (d / refLen - 1) / 0.8, 0, 1);
+  };
+  const refLen = (b: BondSpec, frame: P[]) => {
+    const pa = frame[b.a], pb = frame[b.b];
+    return Math.max(1, Math.hypot(pb.x - pa.x, pb.y - pa.y));
+  };
+  const oldGate = clamp(1.5 - t * 2.0, 0, 1);        // 1 until t=0.25, 0 by t=0.75
+  const newGate = clamp(t * 2.0 - 0.5, 0, 1);        // 0 until t=0.25, 1 by t=0.75
+  const bondStrain = (ax: number, ay: number, bx: number, by: number, refLen: number) => {
+    const d = Math.hypot(bx - ax, by - ay);
+    return clamp((d / refLen - 1) / 0.8, 0, 1);     // 0 at equilibrium, 1 when fully broken
+  };
 
-  // Bond opacities. Old bonds (0-1, 2-3) live until the transition; new bonds (0-2, 1-3) emerge after.
-  const oldOp = clamp(1 - (t - 0.25) / 0.20, 0, 1);
-  const newOp = clamp((t - 0.55) / 0.20, 0, 1);
-
-  // Heat aura
   const auraOp = clamp((t - 0.5) / 0.4, 0, 1);
   const auraCol = rxn.mode === 'exo' ? C.hot : C.cool;
 
   return (
     <div style={{ position: 'relative', marginTop: 8, aspectRatio: '2 / 1', borderRadius: 4, background: 'var(--ink-2)', overflow: 'hidden' }}>
-      {/* Heat / cool aura */}
       <div style={{
         position: 'absolute', inset: 0,
         background: `radial-gradient(circle at 50% 55%, ${auraCol}33 0%, transparent 65%)`,
@@ -411,22 +581,27 @@ function MolecularScene({ rxn, t }: { rxn: Reaction; t: number }) {
       }} />
 
       <svg viewBox={`0 0 ${VBW} ${VBH}`} style={{ position: 'absolute', inset: 0, width: '100%', height: '100%' }}>
-        {/* collision speed lines while approaching */}
-        {t < 0.30 && (
-          <>
-            <line x1={pos(1).x + 30} y1={150} x2={pos(1).x + 70} y2={150} stroke="rgba(245,241,232,0.25)" strokeWidth="1.5" strokeDasharray="3 4" />
-            <line x1={pos(2).x - 30} y1={150} x2={pos(2).x - 70} y2={150} stroke="rgba(245,241,232,0.25)" strokeWidth="1.5" strokeDasharray="3 4" />
-          </>
-        )}
+        {/* persistent bonds (e.g. internal ion bonds) */}
+        {rxn.persistBonds?.map((b, idx) => (
+          <Bond key={`p${idx}`} A={pos(b.a)} B={pos(b.b)} opacity={1} color="#e8dcc2" order={b.order} thick />
+        ))}
+        {/* old bonds — fade as the atoms move apart past their reactant distance */}
+        {rxn.oldBonds.map((b, idx) => {
+          const A = pos(b.a), B = pos(b.b);
+          const ref = refLen(b, frames[0]);
+          const op = oldGate * distOp(A.x, A.y, B.x, B.y, ref);
+          const strain = bondStrain(A.x, A.y, B.x, B.y, ref);
+          return <Bond key={`o${idx}`} A={A} B={B} opacity={op} color="#d6c9b3" order={b.order} strain={strain} />;
+        })}
+        {/* new bonds — appear as the atoms approach their product distance */}
+        {rxn.newBonds.map((b, idx) => {
+          const A = pos(b.a), B = pos(b.b);
+          const ref = refLen(b, frames[N - 1]);
+          const op = newGate * distOp(A.x, A.y, B.x, B.y, ref);
+          return <Bond key={`n${idx}`} A={A} B={B} opacity={op} color={C.warn} order={b.order} thick />;
+        })}
 
-        {/* Old bonds */}
-        <Bond A={pos(0)} B={pos(1)} opacity={oldOp} color="#d6c9b3" />
-        <Bond A={pos(2)} B={pos(3)} opacity={oldOp} color="#d6c9b3" />
-        {/* New bonds */}
-        <Bond A={pos(0)} B={pos(2)} opacity={newOp} color={C.warn} thick />
-        <Bond A={pos(1)} B={pos(3)} opacity={newOp} color={C.warn} thick />
-
-        {/* Atoms */}
+        {/* atoms */}
         {atoms.map((a, idx) => {
           const p = pos(idx);
           return (
@@ -436,19 +611,23 @@ function MolecularScene({ rxn, t }: { rxn: Reaction; t: number }) {
               <text x={p.x} y={p.y + a.r * 0.36} textAnchor="middle"
                     fontFamily="Fraunces" fontWeight="700" fontSize={a.r * 0.95}
                     fill="#0a0908">{a.sym}</text>
+              {a.charge && (
+                <text x={p.x + a.r * 0.85} y={p.y - a.r * 0.55} textAnchor="middle"
+                      fontFamily="JetBrains Mono" fontSize={a.r * 0.7}
+                      fill={a.charge === '+' ? C.hot : C.cool}>{a.charge}</text>
+              )}
             </g>
           );
         })}
 
-        {/* Phase callout */}
         {t > 0.40 && t < 0.60 && (
-          <text x={VBW / 2} y={36} textAnchor="middle" fontFamily="JetBrains Mono"
+          <text x={VBW / 2} y={24} textAnchor="middle" fontFamily="JetBrains Mono"
                 fontSize="11" letterSpacing="0.18em" fill={C.warn}>
             ‡ TRANSITION STATE
           </text>
         )}
         {t > 0.60 && (
-          <text x={VBW / 2} y={36} textAnchor="middle" fontFamily="JetBrains Mono"
+          <text x={VBW / 2} y={24} textAnchor="middle" fontFamily="JetBrains Mono"
                 fontSize="11" letterSpacing="0.18em" fill={auraCol}>
             {rxn.mode === 'exo' ? '↯ HEAT RELEASED' : '❄ HEAT ABSORBED'}
           </text>
@@ -458,13 +637,45 @@ function MolecularScene({ rxn, t }: { rxn: Reaction; t: number }) {
   );
 }
 
-type P = { x: number; y: number };
-
-function Bond({ A, B, opacity, color, thick }: { A: P; B: P; opacity: number; color: string; thick?: boolean }) {
+function Bond({ A, B, opacity, color, thick, order, strain }: {
+  A: P; B: P; opacity: number; color: string; thick?: boolean; order?: 1 | 2 | 3; strain?: number;
+}) {
   if (opacity <= 0.01) return null;
-  return <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} stroke={color}
-               strokeWidth={thick ? 4 : 3} strokeLinecap="round"
-               style={{ opacity, transition: 'opacity 180ms' }} />;
+  const s = clamp(strain ?? 0, 0, 1);
+  // stretched bonds get thinner, slightly dimmer, and start dashing as they strain
+  const swBase = thick ? 3.5 : 2.8;
+  const sw = swBase * (1 - 0.55 * s);
+  const dash = s > 0.2 ? `${2 + 6 * (1 - s)} ${2 + 6 * s}` : undefined;
+  const lineProps = {
+    stroke: color,
+    strokeWidth: sw,
+    strokeLinecap: 'round' as const,
+    strokeDasharray: dash,
+  };
+  if (!order || order === 1) {
+    return <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} {...lineProps}
+                 style={{ opacity }} />;
+  }
+  const dx = B.x - A.x, dy = B.y - A.y;
+  const len = Math.hypot(dx, dy) || 1;
+  const off = 3.2;
+  const ox = (-dy / len) * off, oy = (dx / len) * off;
+  const thinProps = { ...lineProps, strokeWidth: sw - 0.8 };
+  if (order === 2) {
+    return (
+      <g style={{ opacity }}>
+        <line x1={A.x + ox} y1={A.y + oy} x2={B.x + ox} y2={B.y + oy} {...thinProps} />
+        <line x1={A.x - ox} y1={A.y - oy} x2={B.x - ox} y2={B.y - oy} {...thinProps} />
+      </g>
+    );
+  }
+  return (
+    <g style={{ opacity }}>
+      <line x1={A.x} y1={A.y} x2={B.x} y2={B.y} {...thinProps} />
+      <line x1={A.x + ox} y1={A.y + oy} x2={B.x + ox} y2={B.y + oy} {...thinProps} />
+      <line x1={A.x - ox} y1={A.y - oy} x2={B.x - ox} y2={B.y - oy} {...thinProps} />
+    </g>
+  );
 }
 
 /* ============================================================
@@ -585,9 +796,9 @@ function Thermometer({ mode, delta }: { mode: Mode; delta: number }) {
         ))}
         {/* tube */}
         <rect x="32" y="20" width="14" height="140" rx="7" fill="var(--ink-2)" stroke="var(--line-strong)" />
-        {/* fluid */}
-        <rect x="34" y={20 + (1 - fill) * 140} width="10" height={fill * 140} fill={color}
-              style={{ transition: 'all 200ms' }} />
+        {/* fluid — no CSS transition: the value already updates every frame
+            via rAF, so a 200ms transition fights it and produces visible jumps */}
+        <rect x="34" y={20 + (1 - fill) * 140} width="10" height={fill * 140} fill={color} />
         {/* bulb */}
         <circle cx="39" cy="170" r="14" fill={color} stroke="var(--line-strong)" />
         {/* labels */}
@@ -673,4 +884,8 @@ function phaseTint(t: number, mode: Mode): string {
 function fmt(v: number): string { return `${v > 0 ? '+' : ''}${v.toFixed(0)}`; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
 function lerp(a: number, b: number, k: number) { return a + (b - a) * k; }
-function ease(x: number) { return x * x * (3 - 2 * x); }
+function ease(x: number) { return x * x * x * (x * (x * 6 - 15) + 10); }
+function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
+  const t2 = t * t, t3 = t2 * t;
+  return 0.5 * ((2 * p1) + (-p0 + p2) * t + (2 * p0 - 5 * p1 + 4 * p2 - p3) * t2 + (-p0 + 3 * p1 - 3 * p2 + p3) * t3);
+}
