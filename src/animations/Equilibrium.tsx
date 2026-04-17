@@ -36,6 +36,27 @@ const KR_BASE = 0.50;
 let pidSeq = 0;
 const nextId = () => ++pidSeq;
 
+// Temperature interpolation: level 0 (cool) → 50 (neutral) → 100 (hot).
+// Heating shifts kr more than kf → reverse-favored, consistent with exothermic forward.
+function tempParams(level: number) {
+  const lerpExp = (a: number, b: number, t: number) =>
+    Math.exp(Math.log(a) + (Math.log(b) - Math.log(a)) * t);
+  if (level < 50) {
+    const t = level / 50;
+    return {
+      kfMul: lerpExp(0.9, 1, t),
+      krMul: lerpExp(0.35, 1, t),
+      speedMul: lerpExp(0.72, 1, t),
+    };
+  }
+  const t = (level - 50) / 50;
+  return {
+    kfMul: lerpExp(1, 1.2, t),
+    krMul: lerpExp(1, 3.2, t),
+    speedMul: lerpExp(1, 1.35, t),
+  };
+}
+
 export default function Equilibrium() {
   const simCanvasRef = useRef<HTMLCanvasElement | null>(null);
   const plotCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -52,10 +73,14 @@ export default function Equilibrium() {
   const [speed, setSpeed] = useState(1);
   const [counts, setCounts] = useState({ no2: INITIAL_NO2, n2o4: INITIAL_N2O4 });
   const [rates, setRates] = useState({ kf: KF_BASE, kr: KR_BASE });
-  const [temp, setTemp] = useState<'cool' | 'normal' | 'hot'>('normal');
+  const [tempLevel, setTempLevel] = useState(50); // 0 cold ··· 50 neutral ··· 100 hot
+  const [no2Target, setNo2Target] = useState(INITIAL_NO2);
+  const [n2o4Target, setN2o4Target] = useState(INITIAL_N2O4);
+  const tempLevelRef = useRef(50);
 
   // keep refs synced with state for RAF loop
   useEffect(() => { speedRef.current = speed; }, [speed]);
+  useEffect(() => { tempLevelRef.current = tempLevel; }, [tempLevel]);
 
   const resetSim = useCallback(() => {
     const { w, h } = boxRef.current;
@@ -68,7 +93,10 @@ export default function Equilibrium() {
     kfRef.current = KF_BASE;
     krRef.current = KR_BASE;
     pendingOpsRef.current = [];
-    setTemp('normal');
+    setTempLevel(50);
+    tempLevelRef.current = 50;
+    setNo2Target(INITIAL_NO2);
+    setN2o4Target(INITIAL_N2O4);
     setRates({ kf: KF_BASE, kr: KR_BASE });
     setCounts({ no2: INITIAL_NO2, n2o4: INITIAL_N2O4 });
   }, []);
@@ -256,42 +284,60 @@ export default function Equilibrium() {
   // Button actions — queue on sim thread
   const queue = (fn: () => void) => { pendingOpsRef.current.push(fn); };
 
-  const addNO2 = () => queue(() => {
-    const { w, h } = boxRef.current;
-    for (let i = 0; i < 10; i++) particlesRef.current.push(makeParticle('NO2', w, h));
-  });
-  const addN2O4 = () => queue(() => {
-    const { w, h } = boxRef.current;
-    for (let i = 0; i < 6; i++) particlesRef.current.push(makeParticle('N2O4', w, h));
-  });
-  const removeNO2 = () => queue(() => {
-    const ps = particlesRef.current;
-    let n = 10;
-    for (let i = ps.length - 1; i >= 0 && n > 0; i--) {
-      if (ps[i].type === 'NO2') { ps.splice(i, 1); n--; }
-    }
-  });
+  // Drag a slider → set the target population. Add/remove particles to match.
+  const handleNo2Target = (v: number) => {
+    const target = Math.round(v);
+    setNo2Target(target);
+    queue(() => {
+      const { w, h } = boxRef.current;
+      const ps = particlesRef.current;
+      const cur = ps.reduce((n, p) => n + (p.type === 'NO2' ? 1 : 0), 0);
+      if (target > cur) {
+        for (let i = 0; i < target - cur; i++) ps.push(makeParticle('NO2', w, h));
+      } else if (target < cur) {
+        let drop = cur - target;
+        for (let i = ps.length - 1; i >= 0 && drop > 0; i--) {
+          if (ps[i].type === 'NO2') { ps.splice(i, 1); drop--; }
+        }
+      }
+    });
+  };
+  const handleN2o4Target = (v: number) => {
+    const target = Math.round(v);
+    setN2o4Target(target);
+    queue(() => {
+      const { w, h } = boxRef.current;
+      const ps = particlesRef.current;
+      const cur = ps.reduce((n, p) => n + (p.type === 'N2O4' ? 1 : 0), 0);
+      if (target > cur) {
+        for (let i = 0; i < target - cur; i++) ps.push(makeParticle('N2O4', w, h));
+      } else if (target < cur) {
+        let drop = cur - target;
+        for (let i = ps.length - 1; i >= 0 && drop > 0; i--) {
+          if (ps[i].type === 'N2O4') { ps.splice(i, 1); drop--; }
+        }
+      }
+    });
+  };
 
   // Forward (2 NO2 → N2O4) is exothermic — heat shifts reverse (Le Châtelier).
-  // Implementation: heating multiplies kr more than kf (endothermic reverse benefits).
-  const applyTemp = (t: 'cool' | 'normal' | 'hot', from: 'cool' | 'normal' | 'hot') => {
-    let kf = KF_BASE, kr = KR_BASE;
-    if (t === 'hot')  { kf = KF_BASE * 1.2; kr = KR_BASE * 3.2; }
-    if (t === 'cool') { kf = KF_BASE * 0.9; kr = KR_BASE * 0.35; }
+  // Smooth interpolation: cool (level 0) → neutral (50) → hot (100).
+  const handleTemp = (level: number) => {
+    const prev = tempLevelRef.current;
+    setTempLevel(level);
+    tempLevelRef.current = level;
+    const { kfMul, krMul, speedMul } = tempParams(level);
+    const prevSpeedMul = tempParams(prev).speedMul;
+    const kf = KF_BASE * kfMul;
+    const kr = KR_BASE * krMul;
     kfRef.current = kf; krRef.current = kr;
     setRates({ kf, kr });
-    const speedAt = (s: 'cool' | 'normal' | 'hot') => s === 'hot' ? 1.35 : s === 'cool' ? 0.72 : 1;
-    const mul = speedAt(t) / speedAt(from);
+    const mul = speedMul / prevSpeedMul;
     queue(() => { for (const p of particlesRef.current) { p.vx *= mul; p.vy *= mul; } });
   };
-  const applyHeat = () => setTemp(t => {
-    const n: 'cool' | 'normal' | 'hot' = t === 'cool' ? 'normal' : 'hot';
-    applyTemp(n, t); return n;
-  });
-  const applyCool = () => setTemp(t => {
-    const n: 'cool' | 'normal' | 'hot' = t === 'hot' ? 'normal' : 'cool';
-    applyTemp(n, t); return n;
-  });
+
+  const tLabel = tempLevel > 65 ? 'HOT' : tempLevel < 35 ? 'COOL' : 'NEUTRAL';
+  const tColor = tempLevel > 65 ? 'var(--hot)' : tempLevel < 35 ? 'var(--cool)' : 'var(--paper-dim)';
 
   // Derived quantities
   const Kc = rates.kf / rates.kr; // in "particle-count" units (proportional to true Kc)
@@ -328,7 +374,7 @@ export default function Equilibrium() {
           <div style={flexBetween}>
             <div className="eyebrow">Reaction vessel · sealed</div>
             <div className="mono" style={{ fontSize: 10, color: 'var(--paper-dim)' }}>
-              t = {simTimeRef.current?.toFixed?.(1) ?? '0'}s · {temp.toUpperCase()}
+              t = {simTimeRef.current?.toFixed?.(1) ?? '0'}s · <span style={{ color: tColor }}>{tLabel}</span>
             </div>
           </div>
           <div style={{
@@ -347,12 +393,17 @@ export default function Equilibrium() {
               <LegendDimer label="N₂O₄" />
             </div>
           </div>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(5, 1fr)', gap: 6 }}>
-            <StressBtn onClick={addNO2} accent={COL_NO2}>+ NO₂</StressBtn>
-            <StressBtn onClick={removeNO2} accent={COL_NO2}>− NO₂</StressBtn>
-            <StressBtn onClick={addN2O4} accent={COL_N2O4}>+ N₂O₄</StressBtn>
-            <StressBtn onClick={applyHeat} accent="var(--hot)" active={temp === 'hot'}>+ Heat</StressBtn>
-            <StressBtn onClick={applyCool} accent="var(--cool)" active={temp === 'cool'}>− Cool</StressBtn>
+          <div style={{ display: 'grid', gap: 10, padding: '4px 2px' }}>
+            <UISlider label="NO₂ population" value={no2Target} min={0} max={100} step={1}
+                      onChange={handleNo2Target} accent={COL_NO2}
+                      format={(v) => `${Math.round(v)} particles`} />
+            <UISlider label="N₂O₄ population" value={n2o4Target} min={0} max={50} step={1}
+                      onChange={handleN2o4Target} accent={COL_N2O4}
+                      format={(v) => `${Math.round(v)} particles`} />
+            <UISlider label="Temperature · cool ↔ hot" value={tempLevel} min={0} max={100} step={1}
+                      onChange={handleTemp}
+                      accent={tempLevel > 65 ? 'var(--hot)' : tempLevel < 35 ? 'var(--cool)' : 'var(--phos)'}
+                      format={(v) => v > 65 ? `hot · +${(v - 50).toFixed(0)}` : v < 35 ? `cool · ${(v - 50).toFixed(0)}` : 'neutral'} />
           </div>
         </div>
 
@@ -490,20 +541,6 @@ function drawPlot(c: HTMLCanvasElement, dpr: number, hist: Sample[], nowT: numbe
 // ───── UI atoms ─────
 
 const LEGEND_LABEL: React.CSSProperties = { fontSize: 10, color: 'var(--paper-dim)', display: 'inline-flex', alignItems: 'center', gap: 6 };
-
-function StressBtn({ children, onClick, accent, active }: {
-  children: React.ReactNode; onClick: () => void; accent?: string; active?: boolean;
-}) {
-  return (
-    <button onClick={onClick} className="mono" style={{
-      padding: '9px 6px', fontSize: 10, letterSpacing: '0.12em', textTransform: 'uppercase',
-      border: `1px solid ${active && accent ? accent : 'var(--line-strong)'}`,
-      background: active ? `${accent}22` : 'transparent',
-      color: active && accent ? accent : 'var(--paper)',
-      cursor: 'pointer', whiteSpace: 'nowrap',
-    }}>{children}</button>
-  );
-}
 
 function Readout({ label, value, accent }: { label: string; value: string; accent?: string }) {
   return (

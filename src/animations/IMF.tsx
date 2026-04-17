@@ -344,6 +344,7 @@ function Scene({ meta, r, theta, flicker, onRotate }: {
             transform: `rotate(${theta}deg)`,
             transition: draggingRef.current ? 'none' : 'transform 120ms ease',
             cursor: 'grab', touchAction: 'none',
+            userSelect: 'none', WebkitUserSelect: 'none',
           }}
           title="Drag to rotate"
         >

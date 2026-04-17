@@ -630,7 +630,7 @@ function Scene({
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
       onPointerCancel={onPointerUp}
-      style={{ touchAction: 'none', cursor: 'grab', display: 'block' }}
+      style={{ touchAction: 'none', cursor: 'grab', display: 'block', userSelect: 'none', WebkitUserSelect: 'none' }}
     >
       <defs>
         {Object.entries(ELEM).map(([sym, c]) => (
