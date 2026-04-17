@@ -883,7 +883,7 @@ function phaseTint(t: number, mode: Mode): string {
 
 function fmt(v: number): string { return `${v > 0 ? '+' : ''}${v.toFixed(0)}`; }
 function clamp(v: number, lo: number, hi: number) { return Math.max(lo, Math.min(hi, v)); }
-function lerp(a: number, b: number, k: number) { return a + (b - a) * k; }
+
 function ease(x: number) { return x * x * x * (x * (x * 6 - 15) + 10); }
 function catmullRom(p0: number, p1: number, p2: number, p3: number, t: number): number {
   const t2 = t * t, t3 = t2 * t;
