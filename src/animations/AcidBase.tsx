@@ -80,7 +80,7 @@ const COL_NA = '#c084fc';     // Na+
 const COL_CL = '#69e36b';     // Cl-
 const COL_C = '#7d8d99';      // carbon
 const COL_N = '#5dd0ff';      // nitrogen
-const COL_W = '#9bd5ff';      // water/hydrogen pale
+const COL_W = '#f5f1e8';      // neutral hydrogen tone in molecules
 
 export default function AcidBase() {
   const [comboId, setComboId] = useState(COMBOS[0].id);
@@ -93,7 +93,8 @@ export default function AcidBase() {
   const [speed, setSpeed] = useState(1);
 
   // Animation clock
-  const [phase, setPhase] = useState(0); // 0..1, loops
+  const [phase, setPhase] = useState(0); // 0..1, one-way transfer timeline
+  const [drift, setDrift] = useState(0); // 0..1, continuous Brownian-like drift
   const lastT = useRef(performance.now());
   useEffect(() => {
     let raf = 0;
@@ -101,7 +102,8 @@ export default function AcidBase() {
       const dt = (now - lastT.current) / 1000;
       lastT.current = now;
       if (running && !document.hidden) {
-        setPhase(p => (p + dt * 0.25 * speed) % 1);
+        setPhase(p => Math.min(1, p + dt * 0.25 * speed));
+        setDrift(d => (d + dt * 0.22 * speed) % 1);
       }
       raf = requestAnimationFrame(loop);
     };
@@ -122,11 +124,13 @@ export default function AcidBase() {
       : 'rgba(155,213,255,0.10)';
 
   // Particle counts derived from concentrations
-  const nAcid = Math.round(clamp(acidM, 0.01, 1) * 12) + 2;       // 2..14
-  const nBase = Math.round(clamp(baseM, 0.01, 1) * 12 * (mixPct / 100)) + 1;
+  // Keep visual stoichiometry intuitive: at equal concentrations and 100% stoich
+  // there should be no forced leftover donor.
+  const nAcid = Math.max(2, Math.round(clamp(acidM, 0.01, 1) * 12));       // 2..12
+  const nBase = Math.max(1, Math.round(clamp(baseM, 0.01, 1) * 12 * (mixPct / 100)));
 
   // Reset
-  const reset = () => { setAcidM(0.5); setBaseM(0.5); setMixPct(100); setSpeed(1); setRunning(true); setPhase(0); };
+  const reset = () => { setAcidM(0.5); setBaseM(0.5); setMixPct(100); setSpeed(1); setRunning(true); setPhase(0); setDrift(0); };
 
   return (
     <div style={{ display: 'grid', gap: 16 }}>
@@ -134,7 +138,7 @@ export default function AcidBase() {
       <SlideTabs<string>
         tabs={COMBOS.map(c => ({ id: c.id, label: c.label }))}
         value={comboId}
-        onChange={(id) => { setComboId(id); setPhase(0); }}
+        onChange={(id) => { setComboId(id); setPhase(0); setDrift(0); }}
       />
 
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', gap: 16, flexWrap: 'wrap' }}>
@@ -161,7 +165,7 @@ export default function AcidBase() {
             </div>
           </div>
 
-          <BeakerScene combo={combo} nAcid={nAcid} nBase={nBase} phase={phase} solutionTint={solutionTint} />
+          <BeakerScene combo={combo} nAcid={nAcid} nBase={nBase} phase={phase} drift={drift} solutionTint={solutionTint} />
         </div>
 
         {/* pH meter */}
@@ -350,16 +354,17 @@ function phColor(pH: number) {
 
 // ─── visual components ───
 
-function BeakerScene({ combo, nAcid, nBase, phase, solutionTint }: {
-  combo: Combo; nAcid: number; nBase: number; phase: number; solutionTint: string;
+function BeakerScene({ combo, nAcid, nBase, phase, drift, solutionTint }: {
+  combo: Combo; nAcid: number; nBase: number; phase: number; drift: number; solutionTint: string;
 }) {
   // Layout: beaker fills inner region. Acid molecules on left, base on right, spectators float top.
-  // Phase loops 0..1 — proton-transfer cycle:
+  // Phase progresses 0..1 once — proton-transfer cycle:
   //   0.0–0.3: H+ separating from acid
   //   0.3–0.7: H+ migrating across
   //   0.7–1.0: bound to base / conjugate forming
   // Wave a small offset by index so molecules cycle out-of-phase.
 
+  const reactedPairs = Math.min(nAcid, nBase);
   const W = 100, H = 100; // percent units in svg viewBox 0..100
 
   return (
@@ -381,47 +386,53 @@ function BeakerScene({ combo, nAcid, nBase, phase, solutionTint }: {
       <text x="90" y="16" textAnchor="end" fontFamily="JetBrains Mono" fontSize="2.4" fill="var(--base)" letterSpacing="0.4">BASE · {combo.base.formula}</text>
 
       {/* Spectators floating on top band */}
-      {Array.from({ length: Math.min(nAcid, 6) }).map((_, i) => combo.spectatorAnion && (
+      {Array.from({ length: Math.min(nAcid, 6) }).map((_, i) => (combo.id !== 'sa-sb' && combo.spectatorAnion) && (
         <SpectatorIon key={`sa-${i}`} x={14 + (i * 12) % 70} y={26 + ((i * 7) % 6)}
-                      label={combo.spectatorAnion} color={COL_CL} phase={phase} idx={i} />
+                      label={combo.spectatorAnion} color={COL_CL} phase={drift} idx={i} />
       ))}
       {Array.from({ length: Math.min(nBase, 6) }).map((_, i) => combo.spectatorCation && (
         <SpectatorIon key={`sc-${i}`} x={20 + (i * 11) % 60} y={32 + ((i * 5) % 6)}
-                      label={combo.spectatorCation} color={COL_NA} phase={phase} idx={i + 3} />
+                      label={combo.spectatorCation} color={COL_NA} phase={drift} idx={i + 3} />
       ))}
 
       {/* Acid molecules — proton donors */}
       {Array.from({ length: nAcid }).map((_, i) => {
-        const localPhase = (phase + i * 0.07) % 1;
-        const ax = 14 + (i % 4) * 8 + ((i / 4) | 0) * 2;
-        const ay = 50 + (i % 3) * 12 + ((i / 6) | 0) * 5;
-        return <AcidMolecule key={`a-${i}`} x={ax} y={ay} combo={combo} phase={localPhase} />;
+        const localPhase = (drift + i * 0.07) % 1;
+        const ax = 14 + pseudoRand(i * 13.1 + 1.7) * 30 + Math.sin((drift + i * 0.17) * Math.PI * 2) * 1.4;
+        const ay = 40 + pseudoRand(i * 29.7 + 2.9) * 42 + Math.cos((drift + i * 0.13) * Math.PI * 2) * 1.1;
+        const transfer = i < reactedPairs ? clamp((phase - i * 0.015) / 0.85, 0, 1) : null;
+        return <AcidMolecule key={`a-${i}`} x={ax} y={ay} combo={combo} phase={localPhase} transfer={transfer} />;
       })}
 
       {/* Base molecules — proton acceptors */}
       {Array.from({ length: nBase }).map((_, i) => {
-        const localPhase = (phase + 0.5 + i * 0.07) % 1;
-        const bx = 64 + (i % 4) * 6 + ((i / 4) | 0) * 2;
-        const by = 50 + (i % 3) * 12 + ((i / 6) | 0) * 5;
-        return <BaseMolecule key={`b-${i}`} x={bx} y={by} combo={combo} phase={localPhase} />;
+        const localPhase = (drift + 0.5 + i * 0.07) % 1;
+        const bx = 57 + pseudoRand(i * 17.3 + 3.1) * 31 + Math.sin((drift + i * 0.19) * Math.PI * 2) * 1.3;
+        const by = 40 + pseudoRand(i * 31.9 + 4.3) * 42 + Math.cos((drift + i * 0.11) * Math.PI * 2) * 1.1;
+        const transfer = i < reactedPairs ? clamp((phase - i * 0.015) / 0.85, 0, 1) : null;
+        return <BaseMolecule key={`b-${i}`} x={bx} y={by} combo={combo} phase={localPhase} transfer={transfer} />;
       })}
 
       {/* migrating protons */}
-      {Array.from({ length: Math.min(nAcid, nBase) }).map((_, i) => {
-        const localPhase = (phase + i * 0.1) % 1;
-        if (localPhase < 0.25 || localPhase > 0.75) return null;
-        const k = (localPhase - 0.25) / 0.5;
-        const sx = 22 + (i % 4) * 8;
-        const ex = 68 + (i % 4) * 6;
-        const sy = 56 + (i % 3) * 12;
-        const ey = 56 + (i % 3) * 12;
+      {Array.from({ length: reactedPairs }).map((_, i) => {
+        const transfer = clamp((phase - i * 0.015) / 0.85, 0, 1);
+        if (transfer < 0.2 || transfer > 0.75) return null;
+        const k = (transfer - 0.2) / 0.55;
+        // Use the exact same donor/acceptor anchors as rendered molecules.
+        const ax = 14 + pseudoRand(i * 13.1 + 1.7) * 30 + Math.sin((drift + i * 0.17) * Math.PI * 2) * 1.4;
+        const ay = 40 + pseudoRand(i * 29.7 + 2.9) * 42 + Math.cos((drift + i * 0.13) * Math.PI * 2) * 1.1;
+        const bx = 57 + pseudoRand(i * 17.3 + 3.1) * 31 + Math.sin((drift + i * 0.19) * Math.PI * 2) * 1.3;
+        const by = 40 + pseudoRand(i * 31.9 + 4.3) * 42 + Math.cos((drift + i * 0.11) * Math.PI * 2) * 1.1;
+        const sx = ax + 3.4;
+        const sy = ay - 2.4;
+        const ex = combo.base.formula === 'NaOH' ? bx - 2.1 : bx + 3.4;
+        const ey = combo.base.formula === 'NaOH' ? by - 1.6 : by - 2.4;
         const x = sx + (ex - sx) * k;
-        const y = sy + (ey - sy) * k - Math.sin(k * Math.PI) * 8;
+        const y = sy + (ey - sy) * k - Math.sin(k * Math.PI) * 2.2;
         return (
           <g key={`p-${i}`}>
-            <circle cx={x} cy={y} r={2.2} fill={COL_H} opacity="0.95" />
-            <circle cx={x} cy={y} r={3.6} fill={COL_H} opacity="0.25" />
-            <text x={x} y={y + 0.7} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.6" fill="#0a0908" fontWeight="700">H⁺</text>
+            <circle cx={x} cy={y} r={1.3} fill={COL_H} opacity="0.95" />
+            <text x={x} y={y + 0.4} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.1" fill="#0a0908" fontWeight="700">H⁺</text>
           </g>
         );
       })}
@@ -439,9 +450,10 @@ function SpectatorIon({ x, y, label, color, phase, idx }: { x: number; y: number
   );
 }
 
-function AcidMolecule({ x, y, combo, phase }: { x: number; y: number; combo: Combo; phase: number }) {
-  // For phase 0..0.25: acid intact (HA). 0.25..0.75: H+ has departed → A-. 0.75..1: re-forms (cycle reset)
-  const departed = phase >= 0.2 && phase < 0.85;
+function AcidMolecule({ x, y, combo, phase, transfer }: { x: number; y: number; combo: Combo; phase: number; transfer: number | null }) {
+  // transfer: 0..1 one-way progress for matched acid-base pairs.
+  // null means no matched acceptor (remains unreacted donor).
+  const departed = transfer != null ? transfer >= 0.2 : false;
   const isAcetic = combo.acid.formula === 'CH3COOH';
 
   return (
@@ -460,7 +472,9 @@ function AcidMolecule({ x, y, combo, phase }: { x: number; y: number; combo: Com
         // HCl — chloride core
         <g>
           <circle r={2.4} fill={COL_CL} />
-          <text y={0.7} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.6" fontWeight="700" fill="#0a0908">Cl</text>
+          <text y={0.7} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.4" fontWeight="700" fill="#0a0908">
+            {departed ? 'Cl⁻' : 'Cl'}
+          </text>
         </g>
       )}
       {/* the labile proton */}
@@ -471,16 +485,16 @@ function AcidMolecule({ x, y, combo, phase }: { x: number; y: number; combo: Com
         </g>
       )}
       {/* charge label when departed */}
-      {departed && (
+      {departed && isAcetic && (
         <text x={isAcetic ? 4 : 3.2} y={-2.6} fontFamily="JetBrains Mono" fontSize="1.4" fill={isAcetic ? 'var(--acid)' : COL_CL}>−</text>
       )}
     </g>
   );
 }
 
-function BaseMolecule({ x, y, combo, phase }: { x: number; y: number; combo: Combo; phase: number }) {
-  // Phase 0..0.2: base alone. 0.2..0.85: bound H+ (conjugate acid / water). 0.85..1: releases.
-  const bound = phase >= 0.25 && phase < 0.9;
+function BaseMolecule({ x, y, combo, phase, transfer }: { x: number; y: number; combo: Combo; phase: number; transfer: number | null }) {
+  // For matched pairs, acceptor becomes bound once proton arrives and stays bound.
+  const bound = transfer != null ? transfer >= 0.75 : false;
   const isAmmonia = combo.base.formula === 'NH3';
 
   return (
@@ -499,20 +513,32 @@ function BaseMolecule({ x, y, combo, phase }: { x: number; y: number; combo: Com
         <g>
           <circle r={2} fill={COL_OH} />
           <text y={0.6} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.4" fontWeight="700" fill="#0a0908">O</text>
-          <circle cx={2.6} cy={1.4} r={1} fill={COL_W} />
+          <circle cx={2.6} cy={1.4} r={1} fill={COL_H} />
+          <text x={2.6} y={1.9} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.0" fontWeight="700" fill="#0a0908">H</text>
         </g>
       )}
       {bound && (
-        <g>
-          <circle cx={3.4} cy={-2.4} r={1.3} fill={COL_H} />
-          <text x={3.4} y={-2} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.1" fontWeight="700" fill="#0a0908">H</text>
-          <text x={5.5} y={-2.6} fontFamily="JetBrains Mono" fontSize="1.4" fill={isAmmonia ? 'var(--base)' : 'var(--phos)'}>
-            {isAmmonia ? '+' : ''}
-          </text>
-        </g>
+        isAmmonia ? (
+          <g>
+            <circle cx={3.4} cy={-2.4} r={1.3} fill={COL_H} />
+            <text x={3.4} y={-2} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.1" fontWeight="700" fill="#0a0908">H</text>
+            <text x={5.5} y={-2.6} fontFamily="JetBrains Mono" fontSize="1.4" fill="var(--base)">+</text>
+          </g>
+        ) : (
+          // For OH- acceptor, incoming proton sits close to O to form H2O.
+          <g>
+            <circle cx={-2.1} cy={-1.6} r={1.3} fill={COL_H} />
+            <text x={-2.1} y={-1.2} textAnchor="middle" fontFamily="JetBrains Mono" fontSize="1.1" fontWeight="700" fill="#0a0908">H</text>
+          </g>
+        )
       )}
     </g>
   );
+}
+
+function pseudoRand(n: number): number {
+  const x = Math.sin(n * 12.9898) * 43758.5453;
+  return x - Math.floor(x);
 }
 
 function PHBar({ pH }: { pH: number }) {
